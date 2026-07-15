@@ -6,40 +6,30 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Globe, Sparkles, ArrowRight, Loader2, ExternalLink, Download } from "lucide-react";
+import { Globe, Sparkles, Loader2, Download, AlertCircle } from "lucide-react";
 import { useState } from "react";
 import { scrapeApi } from "@/services/api";
 import toast from "react-hot-toast";
 
 export default function ScrapePage() {
   const [url, setUrl] = useState("");
-  const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any>(null);
-
-  const handleAnalyze = async () => {
-    if (!url) return toast.error("Please enter a URL");
-    setLoading(true);
-    try {
-      const data = await scrapeApi.analyze(url);
-      setResults(data);
-      toast.success("Page analyzed successfully!");
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [error, setError] = useState<string | null>(null);
 
   const handleScrape = async () => {
-    if (!results) return;
+    if (!url) return toast.error("Please enter a URL");
     setLoading(true);
+    setError(null);
     try {
-      const data = await scrapeApi.execute(results.taskId || "new", url, results.selectors);
-      toast.success(`Scraped ${data.count || 0} items!`);
+      const data = await scrapeApi.execute("manual", url, {
+        container: "body",
+        fields: { text: "h1, h2, h3, p, a, li, td, th, span" },
+      });
       setResults(data);
+      toast.success(`Scraped ${data.count || 0} items!`);
     } catch (err: any) {
+      setError(err.message);
       toast.error(err.message);
     } finally {
       setLoading(false);
@@ -54,10 +44,10 @@ export default function ScrapePage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 shadow-lg shadow-purple-500/25">
               <Globe className="h-5 w-5 text-white" />
             </div>
-            AI Web Scraper
+            Web Scraper
           </h1>
           <p className="text-muted-foreground mt-1">
-            Enter a URL and tell the AI what data you want to extract
+            Enter a URL to extract data from any website
           </p>
         </div>
 
@@ -67,46 +57,37 @@ export default function ScrapePage() {
               <Label htmlFor="url">Website URL</Label>
               <Input
                 id="url"
-                placeholder="https://example.com/products"
+                placeholder="https://example.com"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleScrape()}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="desc">What data do you want?</Label>
-              <Textarea
-                id="desc"
-                placeholder="e.g., Extract all product names, prices, and ratings into a table"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-              />
-            </div>
-            <div className="flex gap-3">
-              <Button onClick={handleAnalyze} disabled={loading} variant="gradient" size="lg">
-                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-                Analyze with AI
-              </Button>
-              {results && (
-                <Button onClick={handleScrape} disabled={loading} size="lg">
-                  <Download className="mr-2 h-4 w-4" />
-                  Scrape Data
-                </Button>
-              )}
-            </div>
+            <Button onClick={handleScrape} disabled={loading || !url} variant="gradient" size="lg">
+              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Globe className="mr-2 h-4 w-4" />}
+              {loading ? "Scraping..." : "Scrape Data"}
+            </Button>
           </CardContent>
         </Card>
+
+        {error && (
+          <Card className="border-destructive/30 bg-destructive/5">
+            <CardContent className="p-4 flex items-center gap-3">
+              <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
+              <p className="text-sm text-destructive">{error}</p>
+            </CardContent>
+          </Card>
+        )}
 
         {results && (
           <Card className="border-border/50 animate-fade-in">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-violet-500" />
-                AI Analysis Results
+              <CardTitle className="flex items-center justify-between">
+                <span>Scraped Data</span>
+                <span className="text-sm font-normal text-muted-foreground">
+                  {results.count || 0} items
+                </span>
               </CardTitle>
-              <CardDescription>
-                The AI identified the following data structure on this page
-              </CardDescription>
             </CardHeader>
             <CardContent>
               {results.data && results.data.length > 0 ? (
@@ -122,10 +103,10 @@ export default function ScrapePage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {results.data.map((row: any, i: number) => (
+                      {results.data.slice(0, 50).map((row: any, i: number) => (
                         <tr key={i} className="border-b hover:bg-accent/50">
                           {Object.values(row).map((val: any, j: number) => (
-                            <td key={j} className="px-4 py-2">
+                            <td key={j} className="px-4 py-2 max-w-[300px] truncate">
                               {String(val)}
                             </td>
                           ))}
@@ -133,10 +114,15 @@ export default function ScrapePage() {
                       ))}
                     </tbody>
                   </table>
+                  {results.data.length > 50 && (
+                    <p className="text-xs text-muted-foreground text-center py-2">
+                      Showing 50 of {results.data.length} items
+                    </p>
+                  )}
                 </div>
               ) : (
                 <p className="text-muted-foreground text-center py-4">
-                  Analysis complete. Click "Scrape Data" to extract the information.
+                  No data found on this page
                 </p>
               )}
             </CardContent>

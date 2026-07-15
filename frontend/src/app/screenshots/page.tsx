@@ -1,11 +1,11 @@
 "use client";
 
 import AppLayout from "@/components/app-layout";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Camera, Loader2, Download, Maximize2 } from "lucide-react";
+import { Camera, Loader2, Download, AlertCircle, ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { screenshotsApi } from "@/services/api";
 import toast from "react-hot-toast";
@@ -15,15 +15,18 @@ export default function ScreenshotsPage() {
   const [fullPage, setFullPage] = useState(true);
   const [loading, setLoading] = useState(false);
   const [screenshots, setScreenshots] = useState<any[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   const handleCapture = async () => {
     if (!url) return toast.error("Please enter a URL");
     setLoading(true);
+    setError(null);
     try {
       const data = await screenshotsApi.capture("manual", url, { fullPage });
       setScreenshots((prev) => [data, ...prev]);
       toast.success("Screenshot captured!");
     } catch (err: any) {
+      setError(err.message);
       toast.error(err.message);
     } finally {
       setLoading(false);
@@ -54,6 +57,7 @@ export default function ScreenshotsPage() {
                 placeholder="https://example.com"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleCapture()}
               />
             </div>
             <div className="flex items-center gap-4">
@@ -67,28 +71,53 @@ export default function ScreenshotsPage() {
                 Full page screenshot
               </label>
             </div>
-            <Button onClick={handleCapture} disabled={loading} variant="gradient" size="lg">
+            <Button onClick={handleCapture} disabled={loading || !url} variant="gradient" size="lg">
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
-              Capture Screenshot
+              {loading ? "Capturing..." : "Capture Screenshot"}
             </Button>
           </CardContent>
         </Card>
+
+        {error && (
+          <Card className="border-destructive/30 bg-destructive/5">
+            <CardContent className="p-4 flex items-center gap-3">
+              <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
+              <p className="text-sm text-destructive">{error}</p>
+            </CardContent>
+          </Card>
+        )}
 
         {screenshots.length > 0 && (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {screenshots.map((s, i) => (
               <Card key={i} className="overflow-hidden border-border/50 animate-fade-in">
-                <div className="aspect-video bg-muted flex items-center justify-center">
-                  <Maximize2 className="h-8 w-8 text-muted-foreground/30" />
+                <div className="aspect-video bg-muted flex items-center justify-center overflow-hidden">
+                  <img
+                    src={s.url}
+                    alt={`Screenshot of ${s.pageUrl}`}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = "none";
+                    }}
+                  />
                 </div>
                 <CardContent className="p-4">
-                  <p className="text-sm font-medium truncate">{s.pageUrl || url}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{new Date(s.createdAt || Date.now()).toLocaleString()}</p>
-                  <Button size="sm" variant="outline" className="mt-3 w-full" asChild>
-                    <a href={s.url || "#"} download>
-                      <Download className="mr-2 h-3 w-3" /> Download
-                    </a>
-                  </Button>
+                  <p className="text-sm font-medium truncate">{s.pageUrl}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {new Date(s.createdAt).toLocaleString()}
+                  </p>
+                  <div className="flex gap-2 mt-3">
+                    <Button size="sm" variant="outline" className="flex-1" asChild>
+                      <a href={s.url} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="mr-1 h-3 w-3" /> View
+                      </a>
+                    </Button>
+                    <Button size="sm" variant="outline" className="flex-1" asChild>
+                      <a href={s.url} download>
+                        <Download className="mr-1 h-3 w-3" /> Save
+                      </a>
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))}

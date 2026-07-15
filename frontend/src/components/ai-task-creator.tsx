@@ -4,12 +4,12 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Sparkles, Loader2, Send, Zap } from "lucide-react";
-import { aiApi } from "@/services/api";
+import { Sparkles, Loader2, Send, Zap, CheckCircle2 } from "lucide-react";
+import { aiApi, tasksApi } from "@/services/api";
 import toast from "react-hot-toast";
+import { useRouter } from "next/navigation";
 
 interface TaskPlan {
   taskType: string;
@@ -17,9 +17,11 @@ interface TaskPlan {
   steps: { action: string; target: string; description: string }[];
 }
 
-export function AiTaskCreator({ onExecute }: { onExecute?: (plan: TaskPlan) => void }) {
+export function AiTaskCreator() {
+  const router = useRouter();
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
+  const [executing, setExecuting] = useState(false);
   const [plan, setPlan] = useState<TaskPlan | null>(null);
 
   const handlePlan = async () => {
@@ -30,9 +32,30 @@ export function AiTaskCreator({ onExecute }: { onExecute?: (plan: TaskPlan) => v
       setPlan(result);
       toast.success("AI generated a plan!");
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(err.message || "Failed to generate plan");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExecute = async () => {
+    if (!plan) return;
+    setExecuting(true);
+    try {
+      const task = await tasksApi.create({
+        name: plan.name,
+        type: plan.taskType as any,
+        description: description,
+      });
+      toast.success("Task created! Executing...");
+
+      const result = await tasksApi.execute(task.id);
+      toast.success(`Task completed in ${result.duration}ms!`);
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err.message || "Execution failed");
+    } finally {
+      setExecuting(false);
     }
   };
 
@@ -53,7 +76,7 @@ export function AiTaskCreator({ onExecute }: { onExecute?: (plan: TaskPlan) => v
           <Label htmlFor="ai-desc">What do you want to automate?</Label>
           <Textarea
             id="ai-desc"
-            placeholder='e.g., "Go to amazon.com, search for wireless headphones, and extract the top 5 results with names, prices, and ratings"'
+            placeholder='e.g., "Go to example.com and extract all product names and prices"'
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
@@ -81,17 +104,16 @@ export function AiTaskCreator({ onExecute }: { onExecute?: (plan: TaskPlan) => v
                   <div>
                     <p className="text-sm font-medium">{step.description}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      <Zap className="h-3 w-3 inline mr-1" />{step.action} → {step.target}
+                      <Zap className="h-3 w-3 inline mr-1" />{step.action} &rarr; {step.target}
                     </p>
                   </div>
                 </div>
               ))}
             </div>
-            {onExecute && (
-              <Button onClick={() => onExecute(plan)} className="w-full" variant="default">
-                <Send className="mr-2 h-4 w-4" /> Execute This Plan
-              </Button>
-            )}
+            <Button onClick={handleExecute} disabled={executing} className="w-full" variant="default">
+              {executing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+              {executing ? "Executing..." : "Execute This Plan"}
+            </Button>
           </div>
         )}
       </CardContent>
