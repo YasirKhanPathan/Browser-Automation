@@ -18,6 +18,7 @@ import {
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { tasksApi } from "@/services/api";
+import { AiTaskCreator } from "@/components/ai-task-creator";
 
 interface Stats {
   total: number;
@@ -114,36 +115,39 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Recent Activity</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {recentTasks.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Clock className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p>No tasks yet. Create your first automation!</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {recentTasks.map((task: any) => (
-                  <div key={task.id} className="flex items-center justify-between rounded-lg border p-3 transition-colors hover:bg-accent/50">
-                    <div className="flex items-center gap-3">
-                      <div className="h-2 w-2 rounded-full bg-violet-500" />
-                      <div>
-                        <p className="font-medium text-sm">{task.name}</p>
-                        <p className="text-xs text-muted-foreground">{task.type}</p>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <AiTaskCreator />
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Recent Activity</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {recentTasks.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Clock className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                  <p>No tasks yet. Create your first automation!</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {recentTasks.map((task: any) => (
+                    <div key={task.id} className="flex items-center justify-between rounded-lg border p-3 transition-colors hover:bg-accent/50">
+                      <div className="flex items-center gap-3">
+                        <div className="h-2 w-2 rounded-full bg-violet-500" />
+                        <div>
+                          <p className="font-medium text-sm">{task.name}</p>
+                          <p className="text-xs text-muted-foreground">{task.type}</p>
+                        </div>
                       </div>
+                      <Badge variant={task.status === "COMPLETED" ? "success" : task.status === "FAILED" ? "destructive" : "secondary"}>
+                        {task.status}
+                      </Badge>
                     </div>
-                    <Badge variant={task.status === "COMPLETED" ? "success" : task.status === "FAILED" ? "destructive" : "secondary"}>
-                      {task.status}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </AppLayout>
   );
