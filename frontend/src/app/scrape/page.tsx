@@ -1,12 +1,11 @@
 "use client";
 
 import AppLayout from "@/components/app-layout";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Globe, Sparkles, Loader2, Download, AlertCircle } from "lucide-react";
+import { Globe, Loader2, AlertCircle } from "lucide-react";
 import { useState } from "react";
 import { scrapeApi } from "@/services/api";
 import toast from "react-hot-toast";
@@ -19,15 +18,17 @@ export default function ScrapePage() {
 
   const handleScrape = async () => {
     if (!url) return toast.error("Please enter a URL");
+    let targetUrl = url;
+    if (!url.startsWith("http")) targetUrl = `https://${url}`;
     setLoading(true);
     setError(null);
     try {
-      const data = await scrapeApi.execute("manual", url, {
+      const data = await scrapeApi.execute("manual", targetUrl, {
         container: "body",
-        fields: { text: "h1, h2, h3, p, a, li, td, th, span" },
+        fields: { text: "h1, h2, h3, p, a, li, td, th" },
       });
       setResults(data);
-      toast.success(`Scraped ${data.count || 0} items!`);
+      toast.success(`Found ${data.count || 0} items`);
     } catch (err: any) {
       setError(err.message);
       toast.error(err.message);
@@ -47,7 +48,7 @@ export default function ScrapePage() {
             Web Scraper
           </h1>
           <p className="text-muted-foreground mt-1">
-            Enter a URL to extract data from any website
+            Enter a URL to extract all visible content from any website
           </p>
         </div>
 
@@ -103,10 +104,10 @@ export default function ScrapePage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {results.data.slice(0, 50).map((row: any, i: number) => (
+                      {results.data.slice(0, 100).map((row: any, i: number) => (
                         <tr key={i} className="border-b hover:bg-accent/50">
                           {Object.values(row).map((val: any, j: number) => (
-                            <td key={j} className="px-4 py-2 max-w-[300px] truncate">
+                            <td key={j} className="px-4 py-2 max-w-[400px] truncate">
                               {String(val)}
                             </td>
                           ))}
@@ -114,16 +115,14 @@ export default function ScrapePage() {
                       ))}
                     </tbody>
                   </table>
-                  {results.data.length > 50 && (
+                  {results.data.length > 100 && (
                     <p className="text-xs text-muted-foreground text-center py-2">
-                      Showing 50 of {results.data.length} items
+                      Showing 100 of {results.data.length} items
                     </p>
                   )}
                 </div>
               ) : (
-                <p className="text-muted-foreground text-center py-4">
-                  No data found on this page
-                </p>
+                <p className="text-muted-foreground text-center py-4">No data found</p>
               )}
             </CardContent>
           </Card>

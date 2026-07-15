@@ -1,7 +1,6 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../index";
-import { analyzeForm } from "../services/ai";
-import { fillForm } from "../services/scraper";
+import { fillForm, detectFormFields } from "../services/scraper";
 
 const router = Router();
 
@@ -10,7 +9,8 @@ router.post("/analyze", async (req: Request, res: Response) => {
     const { url } = req.body;
     if (!url) return res.status(400).json({ error: "URL is required" });
 
-    const analysis = await analyzeForm(url);
+    // Detect form fields directly with Playwright (no AI needed)
+    const analysis = await detectFormFields(url);
 
     const task = await prisma.task.create({
       data: {
@@ -21,7 +21,7 @@ router.post("/analyze", async (req: Request, res: Response) => {
       },
     });
 
-    res.json({ taskId: task.id, fields: analysis.fields });
+    res.json({ taskId: task.id, fields: analysis.fields, submitButton: analysis.submitButton });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -30,17 +30,15 @@ router.post("/analyze", async (req: Request, res: Response) => {
 router.post("/execute", async (req: Request, res: Response) => {
   try {
     const { taskId, url, fields } = req.body;
+    if (!url) return res.status(400).json({ error: "URL is required" });
+    if (!fields) return res.status(400).json({ error: "Fields are required" });
+
     const result = await fillForm(url, fields);
 
-    if (taskId) {
+    if (taskId && taskId !== "manual") {
       await prisma.taskResult.create({
-        data: {
-          taskId,
-          status: "SUCCESS",
-          data: result,
-        },
+        data: { taskId, status: "SUCCESS", data: result },
       });
-
       await prisma.task.update({
         where: { id: taskId },
         data: { status: "COMPLETED" },

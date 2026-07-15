@@ -1,5 +1,5 @@
 import { prisma } from "../index";
-import { scrapePage, fillForm, captureScreenshot } from "./scraper";
+import { scrapePage, scrapePageDirect, fillForm, captureScreenshot } from "./scraper";
 import path from "path";
 import fs from "fs";
 
@@ -9,15 +9,20 @@ export async function runTask(task: any) {
   switch (task.type) {
     case "SCRAPE": {
       const url = config?.url;
-      const selectors = config?.selectors;
       if (!url) throw new Error("No URL configured for scrape task");
-      return await scrapePage(url, selectors);
+
+      const selectors = config?.selectors;
+      if (selectors && selectors.container !== "body") {
+        return await scrapePage(url, selectors);
+      }
+      return await scrapePageDirect(url);
     }
 
     case "FORM_FILL": {
       const url = config?.url;
       const fields = config?.fields;
       if (!url) throw new Error("No URL configured for form fill task");
+      if (!fields) throw new Error("No fields configured for form fill task");
       return await fillForm(url, fields);
     }
 
@@ -35,12 +40,7 @@ export async function runTask(task: any) {
       await captureScreenshot(url, filepath, { fullPage: true });
 
       await prisma.screenshot.create({
-        data: {
-          taskId: task.id,
-          filename,
-          filepath,
-          pageUrl: url,
-        },
+        data: { taskId: task.id, filename, filepath, pageUrl: url },
       });
 
       return { filename, url: `/uploads/screenshots/${filename}` };

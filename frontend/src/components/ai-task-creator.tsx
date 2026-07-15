@@ -6,8 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Sparkles, Loader2, Send, Zap, CheckCircle2 } from "lucide-react";
-import { aiApi, tasksApi } from "@/services/api";
+import { Sparkles, Loader2, Send, Zap, CheckCircle2, AlertCircle } from "lucide-react";
+import { tasksApi } from "@/services/api";
 import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 
@@ -23,18 +23,57 @@ export function AiTaskCreator() {
   const [loading, setLoading] = useState(false);
   const [executing, setExecuting] = useState(false);
   const [plan, setPlan] = useState<TaskPlan | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   const handlePlan = async () => {
     if (!description.trim()) return toast.error("Describe what you want to automate");
     setLoading(true);
+    setAiError(null);
     try {
-      const result = await aiApi.plan(description);
-      setPlan(result);
+      const res = await fetch("/api/ai/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setAiError(data.error || "AI is not available");
+        toast.error("AI planning unavailable — use the feature pages directly");
+        return;
+      }
+
+      setPlan(data);
       toast.success("AI generated a plan!");
     } catch (err: any) {
-      toast.error(err.message || "Failed to generate plan");
+      setAiError(err.message);
+      toast.error("AI is not configured yet");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleQuickScrape = async () => {
+    if (!description.trim()) return toast.error("Enter a URL or description");
+    setExecuting(true);
+    try {
+      // Try to extract a URL from the description
+      const urlMatch = description.match(/https?:\/\/[^\s]+/);
+      const url = urlMatch ? urlMatch[0] : `https://${description.replace(/\s+/g, "")}`;
+
+      const task = await tasksApi.create({
+        name: `Quick Scrape: ${new URL(url).hostname}`,
+        type: "SCRAPE",
+        description,
+      });
+      toast.success("Task created! Running...");
+      const result = await tasksApi.execute(task.id);
+      toast.success(`Done! Found ${result.data?.length || 0} items`);
+      router.push("/results");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setExecuting(false);
     }
   };
 
@@ -45,12 +84,11 @@ export function AiTaskCreator() {
       const task = await tasksApi.create({
         name: plan.name,
         type: plan.taskType as any,
-        description: description,
+        description,
       });
       toast.success("Task created! Executing...");
-
       const result = await tasksApi.execute(task.id);
-      toast.success(`Task completed in ${result.duration}ms!`);
+      toast.success(`Completed in ${result.duration}ms!`);
       router.refresh();
     } catch (err: any) {
       toast.error(err.message || "Execution failed");
@@ -67,26 +105,42 @@ export function AiTaskCreator() {
             <Sparkles className="h-4 w-4 text-white" />
           </div>
           <div>
-            <h3 className="font-semibold">AI Task Creator</h3>
-            <p className="text-xs text-muted-foreground">Describe what you want in plain English</p>
+            <h3 className="font-semibold">Quick Task</h3>
+            <p className="text-xs text-muted-foreground">Enter a URL or describe what you want</p>
           </div>
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="ai-desc">What do you want to automate?</Label>
+          <Label htmlFor="ai-desc">URL or description</Label>
           <Textarea
             id="ai-desc"
-            placeholder='e.g., "Go to example.com and extract all product names and prices"'
+            placeholder="e.g., https://example.com or 'scrape product names from amazon'"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
           />
         </div>
 
-        <Button onClick={handlePlan} disabled={loading} variant="gradient" className="w-full">
-          {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-          Generate Plan with AI
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={handleQuickScrape} disabled={executing || !description.trim()} variant="gradient" className="flex-1">
+            {executing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+            {executing ? "Running..." : "Quick Scrape"}
+          </Button>
+          <Button onClick={handlePlan} disabled={loading || !description.trim()} variant="outline" className="flex-1">
+            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+            AI Plan
+          </Button>
+        </div>
+
+        {aiError && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-sm">
+            <AlertCircle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-amber-600 font-medium">AI not configured</p>
+              <p className="text-muted-foreground text-xs mt-1">Set LLM_API_KEY in backend/.env to enable AI planning. Use Quick Scrape or the feature pages directly in the meantime.</p>
+            </div>
+          </div>
+        )}
 
         {plan && (
           <div className="space-y-3 mt-4 animate-fade-in">
