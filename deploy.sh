@@ -33,5 +33,5 @@ sudo ln -sf /etc/nginx/sites-available/browser-auto /etc/nginx/sites-enabled/bro
 sudo nginx -t && sudo nginx -s reload
 
 echo "=== Deployment Complete ==="
-echo "Frontend: http://localhost:3000"
+echo "Frontend: http://localhost:3003"
 echo "Backend: http://localhost:3002"
