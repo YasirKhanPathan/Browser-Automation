@@ -3,12 +3,28 @@ import { scrapePage, scrapePageDirect, fillForm, captureScreenshot } from "./scr
 import path from "path";
 import fs from "fs";
 
+function extractUrl(config: any): string {
+  // Direct URL in config
+  if (config?.url) return config.url;
+
+  // Extract from plan steps (find first navigate action with HTTP URL)
+  if (config?.plan && Array.isArray(config.plan)) {
+    for (const step of config.plan) {
+      if (step.action === "navigate" && step.target?.startsWith("http")) {
+        return step.target;
+      }
+    }
+  }
+
+  return "";
+}
+
 export async function runTask(task: any) {
   const config = task.config as any;
 
   switch (task.type) {
     case "SCRAPE": {
-      const url = config?.url;
+      const url = extractUrl(config);
       if (!url) throw new Error("No URL configured for scrape task");
 
       const selectors = config?.selectors;
@@ -19,7 +35,7 @@ export async function runTask(task: any) {
     }
 
     case "FORM_FILL": {
-      const url = config?.url;
+      const url = extractUrl(config);
       const fields = config?.fields;
       if (!url) throw new Error("No URL configured for form fill task");
       if (!fields) throw new Error("No fields configured for form fill task");
@@ -27,7 +43,7 @@ export async function runTask(task: any) {
     }
 
     case "SCREENSHOT": {
-      const url = config?.url;
+      const url = extractUrl(config);
       if (!url) throw new Error("No URL configured for screenshot task");
 
       const screenshotsDir = path.join(process.cwd(), "uploads", "screenshots");

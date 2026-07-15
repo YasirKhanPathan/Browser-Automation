@@ -8,6 +8,7 @@ const createTaskSchema = z.object({
   name: z.string().min(1),
   type: z.enum(["SCRAPE", "FORM_FILL", "SCREENSHOT", "CUSTOM"]),
   description: z.string().min(1),
+  config: z.any().optional(),
 });
 
 router.get("/", async (_req: Request, res: Response) => {
@@ -44,7 +45,14 @@ router.get("/:id", async (req: Request, res: Response) => {
 router.post("/", async (req: Request, res: Response) => {
   try {
     const body = createTaskSchema.parse(req.body);
-    const task = await prisma.task.create({ data: body });
+    const task = await prisma.task.create({
+      data: {
+        name: body.name,
+        type: body.type,
+        description: body.description,
+        config: body.config || undefined,
+      },
+    });
     res.status(201).json(task);
   } catch (error) {
     if (error instanceof z.ZodError) {

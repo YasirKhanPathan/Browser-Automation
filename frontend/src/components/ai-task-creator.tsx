@@ -81,10 +81,15 @@ export function AiTaskCreator() {
     if (!plan) return;
     setExecuting(true);
     try {
+      // Extract URL from plan steps (find first navigate action)
+      const navigateStep = plan.steps.find((s) => s.action === "navigate" && s.target.startsWith("http"));
+      const url = navigateStep?.target || "";
+
       const task = await tasksApi.create({
         name: plan.name,
         type: plan.taskType as any,
         description,
+        config: { url, plan: plan.steps },
       });
       toast.success("Task created! Executing...");
       const result = await tasksApi.execute(task.id);

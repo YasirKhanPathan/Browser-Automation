@@ -26,7 +26,7 @@ export const tasksApi = {
   get: (id: string) =>
     api.get(`/api/tasks/${id}`).then((r) => r.data),
 
-  create: (data: { name: string; type: string; description: string }) =>
+  create: (data: { name: string; type: string; description: string; config?: any }) =>
     api.post("/api/tasks", data).then((r) => r.data),
 
   execute: (id: string) =>
