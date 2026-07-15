@@ -2,84 +2,116 @@ const LLM_API_URL = process.env.LLM_API_URL || "http://localhost:19999/v1/chat/c
 const LLM_MODEL = process.env.LLM_MODEL || "xiaomimimo/mimo-v2.5";
 const LLM_API_KEY = process.env.LLM_API_KEY || "";
 
-async function callLLM(prompt: string): Promise<string> {
+async function callLLM(prompt: string, retries = 2): Promise<string> {
   if (!LLM_API_KEY) {
     throw new Error("LLM API key not configured. Set LLM_API_KEY in backend/.env");
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60000);
+  let lastError: any;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 90000);
 
-  try {
-    const body = JSON.stringify({
-      model: LLM_MODEL,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.1,
-      max_tokens: 500,
-    });
-    console.log("[LLM] Request:", LLM_API_URL, "model:", LLM_MODEL, "prompt length:", prompt.length);
+    try {
+      const body = JSON.stringify({
+        model: LLM_MODEL,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.1,
+        max_tokens: 2048,
+      });
+      console.log(`[LLM] Attempt ${attempt + 1}/${retries + 1}, prompt length:`, prompt.length);
 
-    const response = await fetch(LLM_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${LLM_API_KEY}`,
-      },
-      body,
-      signal: controller.signal,
-    });
+      const response = await fetch(LLM_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${LLM_API_KEY}`,
+        },
+        body,
+        signal: controller.signal,
+      });
 
-    clearTimeout(timeout);
+      clearTimeout(timeout);
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`LLM API error (${response.status}): ${text}`);
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`LLM API error (${response.status}): ${text}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content || "";
+      const finish = data.choices?.[0]?.finish_reason;
+      console.log(`[LLM] Response length: ${content.length}, finish: ${finish}`);
+
+      if (content && content.trim().length > 0) return content;
+
+      // Empty response — retry
+      console.log(`[LLM] Empty response, retrying...`);
+      lastError = new Error("LLM returned empty response");
+      continue;
+    } catch (err: any) {
+      clearTimeout(timeout);
+      if (err.name === "AbortError") {
+        lastError = new Error("LLM request timed out after 90s");
+        continue;
+      }
+      lastError = err;
+      continue;
     }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "";
-    console.log("[LLM] Response length:", content.length, "finish:", data.choices?.[0]?.finish_reason);
-    return content;
-  } catch (err: any) {
-    clearTimeout(timeout);
-    if (err.name === "AbortError") {
-      throw new Error("LLM request timed out after 60s");
-    }
-    throw err;
   }
+
+  throw lastError || new Error("LLM failed after all retries");
 }
 
 function parseJSON(text: string): any {
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  // Try to find JSON in the response (handles markdown code blocks too)
+  const jsonMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/) || text.match(/(\{[\s\S]*\})/);
   if (!jsonMatch) throw new Error("No JSON found in AI response");
-  return JSON.parse(jsonMatch[0]);
+  const jsonStr = jsonMatch[1] || jsonMatch[0];
+  return JSON.parse(jsonStr);
+}
+
+function extractUrlFromText(text: string): string {
+  const match = text.match(/https?:\/\/[^\s"'`]+/);
+  return match ? match[0] : "";
 }
 
 export async function planTask(description: string) {
-  const text = await callLLM(`User wants to automate: "${description}"
+  const text = await callLLM(
+    `Automate this: "${description}"
 
-Return ONLY this JSON (no markdown, no explanation):
-{"taskType":"SCRAPE","name":"short name","steps":[{"action":"navigate","target":"https://example.com","description":"go to site"},{"action":"extract","target":"body","description":"get data"}]}
+Respond with ONLY a JSON object, no markdown:
+{"taskType":"SCRAPE","name":"task name","steps":[{"action":"navigate","target":"https://example.com","description":"step description"},{"action":"extract","target":"body","description":"get data"}]}
 
-taskType must be one of: SCRAPE, FORM_FILL, SCREENSHOT, CUSTOM
-Actions: navigate, click, fill, extract, screenshot, wait`);
+taskType: SCRAPE, FORM_FILL, SCREENSHOT, or CUSTOM.
+Actions: navigate, click, fill, extract, screenshot, wait.`
+  );
 
   try {
     return parseJSON(text);
   } catch {
+    // AI returned non-JSON — build a plan from the description
+    const url = extractUrlFromText(description) || extractUrlFromText(text);
     return {
-      taskType: "CUSTOM",
-      name: "AI Planned Task",
-      steps: [{ action: "navigate", target: "about:blank", description: text }],
+      taskType: "SCRAPE",
+      name: description.slice(0, 60),
+      steps: url
+        ? [
+            { action: "navigate", target: url, description: `Navigate to ${url}` },
+            { action: "extract", target: "body", description: "Extract page content" },
+          ]
+        : [{ action: "extract", target: "body", description: description }],
     };
   }
 }
 
 export async function analyzeUrl(url: string) {
-  const text = await callLLM(`What CSS selectors would extract data from ${url}?
+  const text = await callLLM(
+    `What CSS selectors extract data from ${url}?
 
-Return ONLY this JSON:
-{"selectors":{"container":".product-card","fields":{"name":".title","price":".price"}},"suggestedName":"scrape products"}`);
+Respond with ONLY a JSON object:
+{"selectors":{"container":".product-card","fields":{"name":".title","price":".price"}},"suggestedName":"scrape products"}`
+  );
 
   try {
     return parseJSON(text);
@@ -92,10 +124,12 @@ Return ONLY this JSON:
 }
 
 export async function analyzeForm(url: string) {
-  const text = await callLLM(`What form fields exist at ${url}?
+  const text = await callLLM(
+    `What form fields exist at ${url}?
 
-Return ONLY this JSON:
-{"fields":{"name":{"selector":"input[name='name']","type":"text","label":"Name"}},"submitButton":"button[type='submit']"}`);
+Respond with ONLY a JSON object:
+{"fields":{"name":{"selector":"input[name='name']","type":"text","label":"Name"}},"submitButton":"button[type='submit']"}`
+  );
 
   try {
     return parseJSON(text);
