@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Globe, Loader2, AlertCircle } from "lucide-react";
 import { useState } from "react";
-import { scrapeApi } from "@/services/api";
+import { tasksApi, scrapeApi } from "@/services/api";
 import toast from "react-hot-toast";
 
 export default function ScrapePage() {
@@ -23,12 +23,25 @@ export default function ScrapePage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await scrapeApi.execute("manual", targetUrl, {
+      // Create task first so results are saved
+      const hostname = new URL(targetUrl).hostname;
+      const task = await tasksApi.create({
+        name: `Scrape: ${hostname}`,
+        type: "SCRAPE",
+        description: `Scrape data from ${targetUrl}`,
+        config: {
+          url: targetUrl,
+          selectors: { container: "body", fields: { text: "h1, h2, h3, p, a, li, td, th" } },
+        },
+      });
+
+      // Execute via the scrape route with the real taskId
+      const data = await scrapeApi.execute(task.id, targetUrl, {
         container: "body",
         fields: { text: "h1, h2, h3, p, a, li, td, th" },
       });
       setResults(data);
-      toast.success(`Found ${data.count || 0} items`);
+      toast.success(`Found ${data.count || 0} items — saved to results`);
     } catch (err: any) {
       setError(err.message);
       toast.error(err.message);

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Camera, Loader2, Download, AlertCircle, ExternalLink } from "lucide-react";
 import { useState } from "react";
-import { screenshotsApi } from "@/services/api";
+import { tasksApi, screenshotsApi } from "@/services/api";
 import toast from "react-hot-toast";
 
 export default function ScreenshotsPage() {
@@ -19,12 +19,22 @@ export default function ScreenshotsPage() {
 
   const handleCapture = async () => {
     if (!url) return toast.error("Please enter a URL");
+    let targetUrl = url;
+    if (!url.startsWith("http")) targetUrl = `https://${url}`;
     setLoading(true);
     setError(null);
     try {
-      const data = await screenshotsApi.capture("manual", url, { fullPage });
+      const hostname = new URL(targetUrl).hostname;
+      const task = await tasksApi.create({
+        name: `Screenshot: ${hostname}`,
+        type: "SCREENSHOT",
+        description: `Screenshot of ${targetUrl}`,
+        config: { url: targetUrl },
+      });
+
+      const data = await screenshotsApi.capture(task.id, targetUrl, { fullPage });
       setScreenshots((prev) => [data, ...prev]);
-      toast.success("Screenshot captured!");
+      toast.success("Screenshot captured and saved!");
     } catch (err: any) {
       setError(err.message);
       toast.error(err.message);

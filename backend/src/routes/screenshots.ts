@@ -21,17 +21,28 @@ router.post("/capture", async (req: Request, res: Response) => {
 
     await captureScreenshot(url, filepath, { fullPage });
 
-    // Only create DB record if taskId is a valid UUID
     const isUUID = taskId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(taskId);
 
     if (isUUID) {
+      // Create screenshot record
       await prisma.screenshot.create({
+        data: { taskId, filename, filepath, pageUrl: url },
+      });
+
+      // Create result record
+      await prisma.taskResult.create({
         data: {
           taskId,
-          filename,
-          filepath,
-          pageUrl: url,
+          status: "SUCCESS",
+          data: { url: `/uploads/screenshots/${filename}`, filename },
+          duration: 0,
         },
+      });
+
+      // Mark task as completed
+      await prisma.task.update({
+        where: { id: taskId },
+        data: { status: "COMPLETED" },
       });
     }
 
