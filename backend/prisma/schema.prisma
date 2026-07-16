@@ -26,8 +26,23 @@ enum ResultStatus {
   ERROR
 }
 
+model User {
+  id             String       @id @default(uuid())
+  email          String       @unique
+  name           String
+  passwordHash   String
+  notifyEmail    String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  tasks          Task[]
+  schedules      Schedule[]
+  webhooks       Webhook[]
+}
+
 model Task {
   id          String       @id @default(uuid())
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   name        String
   type        TaskType
   description String
@@ -65,6 +80,8 @@ model Screenshot {
 
 model Schedule {
   id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   taskId      String
   task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   cronExpr    String
@@ -77,6 +94,8 @@ model Schedule {
 
 model Webhook {
   id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   taskId    String
   task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   url       String

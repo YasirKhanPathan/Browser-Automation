@@ -2,12 +2,15 @@ import { Router, Request, Response } from "express";
 import { prisma } from "../index";
 import { addSchedule, removeSchedule, toggleSchedule } from "../services/scheduler";
 import { sendEmail } from "../services/notifier";
+import { authMiddleware, AuthRequest } from "../middleware/auth";
 
 const router = Router();
 
-router.get("/", async (_req: Request, res: Response) => {
+router.get("/", authMiddleware, async (req: Request, res: Response) => {
   try {
+    const authReq = req as AuthRequest;
     const schedules = await prisma.schedule.findMany({
+      where: { userId: authReq.userId },
       include: { task: { select: { id: true, name: true, type: true, status: true } } },
       orderBy: { createdAt: "desc" },
     });
@@ -17,34 +20,47 @@ router.get("/", async (_req: Request, res: Response) => {
   }
 });
 
-router.post("/", async (req: Request, res: Response) => {
+router.post("/", authMiddleware, async (req: Request, res: Response) => {
   try {
+    const authReq = req as AuthRequest;
     const { taskId, cronExpr, notifyEmail } = req.body;
     if (!taskId) return res.status(400).json({ error: "taskId is required" });
     if (!cronExpr) return res.status(400).json({ error: "cronExpr is required" });
 
-    const task = await prisma.task.findUnique({ where: { id: taskId } });
+    const task = await prisma.task.findFirst({ where: { id: taskId, userId: authReq.userId } });
     if (!task) return res.status(404).json({ error: "Task not found" });
 
-    const schedule = await addSchedule(taskId, cronExpr, notifyEmail);
+    const schedule = await addSchedule(authReq.userId!, taskId, cronExpr, notifyEmail);
     res.status(201).json(schedule);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.patch("/:id", async (req: Request, res: Response) => {
+router.patch("/:id", authMiddleware, async (req: Request, res: Response) => {
   try {
+    const authReq = req as AuthRequest;
+    const schedule = await prisma.schedule.findFirst({
+      where: { id: req.params.id, userId: authReq.userId },
+    });
+    if (!schedule) return res.status(404).json({ error: "Schedule not found" });
+
     const { enabled } = req.body;
-    const schedule = await toggleSchedule(req.params.id, enabled);
-    res.json(schedule);
+    const updated = await toggleSchedule(req.params.id, enabled);
+    res.json(updated);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.delete("/:id", async (req: Request, res: Response) => {
+router.delete("/:id", authMiddleware, async (req: Request, res: Response) => {
   try {
+    const authReq = req as AuthRequest;
+    const schedule = await prisma.schedule.findFirst({
+      where: { id: req.params.id, userId: authReq.userId },
+    });
+    if (!schedule) return res.status(404).json({ error: "Schedule not found" });
+
     await removeSchedule(req.params.id);
     res.json({ message: "Schedule deleted" });
   } catch (error: any) {
@@ -52,9 +68,12 @@ router.delete("/:id", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/:id/test-email", async (req: Request, res: Response) => {
+router.post("/:id/test-email", authMiddleware, async (req: Request, res: Response) => {
   try {
-    const schedule = await prisma.schedule.findUnique({ where: { id: req.params.id } });
+    const authReq = req as AuthRequest;
+    const schedule = await prisma.schedule.findFirst({
+      where: { id: req.params.id, userId: authReq.userId },
+    });
     if (!schedule) return res.status(404).json({ error: "Schedule not found" });
     if (!schedule.notifyEmail) return res.status(400).json({ error: "No email configured" });
 

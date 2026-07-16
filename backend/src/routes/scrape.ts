@@ -3,15 +3,16 @@ import { prisma } from "../index";
 import { scrapePage, scrapePageDirect } from "../services/scraper";
 import { smartScrape } from "../services/ai-extractor";
 import { crawlPages, CrawlOptions } from "../services/crawler";
+import { authMiddleware, AuthRequest } from "../middleware/auth";
 
 const router = Router();
 
-router.post("/analyze", async (req: Request, res: Response) => {
+router.post("/analyze", authMiddleware, async (req: Request, res: Response) => {
   try {
+    const authReq = req as AuthRequest;
     const { url } = req.body;
     if (!url) return res.status(400).json({ error: "URL is required" });
 
-    // Try AI first, fall back to direct extraction
     let selectors;
     let analysis;
     try {
@@ -19,7 +20,6 @@ router.post("/analyze", async (req: Request, res: Response) => {
       analysis = await analyzeUrl(url);
       selectors = analysis.selectors;
     } catch {
-      // AI unavailable - use smart defaults
       selectors = {
         container: "body",
         fields: { text: "h1, h2, h3, p, a, li, td, th" },
@@ -33,6 +33,7 @@ router.post("/analyze", async (req: Request, res: Response) => {
 
     const task = await prisma.task.create({
       data: {
+        userId: authReq.userId!,
         name: `Scrape: ${new URL(url).hostname}`,
         type: "SCRAPE",
         description: `Scrape data from ${url}`,
@@ -46,16 +47,22 @@ router.post("/analyze", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/execute", async (req: Request, res: Response) => {
+router.post("/execute", authMiddleware, async (req: Request, res: Response) => {
   try {
+    const authReq = req as AuthRequest;
     const { taskId, url, selectors } = req.body;
+
+    if (taskId && taskId !== "manual") {
+      const task = await prisma.task.findFirst({
+        where: { id: taskId, userId: authReq.userId },
+      });
+      if (!task) return res.status(404).json({ error: "Task not found" });
+    }
 
     let data;
     if (selectors && selectors.container !== "body") {
-      // Use specific selectors if provided
       data = await scrapePage(url, selectors);
     } else {
-      // Direct extraction - works without AI
       data = await scrapePageDirect(url);
     }
 
@@ -75,8 +82,9 @@ router.post("/execute", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/smart", async (req: Request, res: Response) => {
+router.post("/smart", authMiddleware, async (req: Request, res: Response) => {
   try {
+    const authReq = req as AuthRequest;
     const { url, description } = req.body;
     if (!url) return res.status(400).json({ error: "URL is required" });
     if (!description) return res.status(400).json({ error: "Description is required for smart scrape" });
@@ -85,6 +93,7 @@ router.post("/smart", async (req: Request, res: Response) => {
 
     const task = await prisma.task.create({
       data: {
+        userId: authReq.userId!,
         name: `Smart Scrape: ${hostname}`,
         type: "SCRAPE",
         description: `Smart scrape: ${description}`,
@@ -128,8 +137,9 @@ router.post("/smart", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/crawl", async (req: Request, res: Response) => {
+router.post("/crawl", authMiddleware, async (req: Request, res: Response) => {
   try {
+    const authReq = req as AuthRequest;
     const { url, description, maxPages = 5, strategy = "ai", nextSelector } = req.body;
     if (!url) return res.status(400).json({ error: "URL is required" });
 
@@ -137,6 +147,7 @@ router.post("/crawl", async (req: Request, res: Response) => {
 
     const task = await prisma.task.create({
       data: {
+        userId: authReq.userId!,
         name: `Crawl: ${hostname} (${maxPages} pages)`,
         type: "SCRAPE",
         description: `Multi-page crawl: ${description || url}`,

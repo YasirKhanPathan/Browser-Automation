@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { AuthProvider } from "@/contexts/auth-context";
 import { Toaster } from "react-hot-toast";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -19,8 +20,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
-          {children}
-          <Toaster position="bottom-right" toastOptions={{ duration: 3000 }} />
+          <AuthProvider>
+            {children}
+            <Toaster position="bottom-right" toastOptions={{ duration: 3000 }} />
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

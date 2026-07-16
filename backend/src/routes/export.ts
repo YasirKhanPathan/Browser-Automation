@@ -1,15 +1,17 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../index";
+import { authMiddleware, AuthRequest } from "../middleware/auth";
 
 const router = Router();
 
-router.get("/:id/export", async (req: Request, res: Response) => {
+router.get("/:id/export", authMiddleware, async (req: Request, res: Response) => {
   try {
+    const authReq = req as AuthRequest;
     const { id } = req.params;
     const format = (req.query.format as string) || "json";
 
-    const task = await prisma.task.findUnique({
-      where: { id },
+    const task = await prisma.task.findFirst({
+      where: { id, userId: authReq.userId },
       include: { results: { orderBy: { createdAt: "desc" }, take: 1 } },
     });
 
@@ -36,7 +38,6 @@ router.get("/:id/export", async (req: Request, res: Response) => {
       return res.send(csv);
     }
 
-    // JSON format
     res.setHeader("Content-Type", "application/json");
     res.setHeader("Content-Disposition", `attachment; filename="${task.name.replace(/[^a-z0-9]/gi, "_")}.json"`);
     res.json(data);
@@ -45,13 +46,14 @@ router.get("/:id/export", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/:id/export/sheets", async (req: Request, res: Response) => {
+router.post("/:id/export/sheets", authMiddleware, async (req: Request, res: Response) => {
   try {
+    const authReq = req as AuthRequest;
     const { id } = req.params;
-    const { spreadsheetId, range } = req.body;
+    const { spreadsheetId } = req.body;
 
-    const task = await prisma.task.findUnique({
-      where: { id },
+    const task = await prisma.task.findFirst({
+      where: { id, userId: authReq.userId },
       include: { results: { orderBy: { createdAt: "desc" }, take: 1 } },
     });
 
@@ -60,15 +62,12 @@ router.post("/:id/export/sheets", async (req: Request, res: Response) => {
     const data = task.results[0]?.data;
     if (!data) return res.status(404).json({ error: "No result data found" });
 
-    // Check for Google Sheets credentials
     if (!process.env.GOOGLE_SHEETS_CREDENTIALS) {
       return res.status(400).json({
         error: "Google Sheets not configured. Set GOOGLE_SHEETS_CREDENTIALS in backend/.env",
       });
     }
 
-    // Google Sheets integration would go here
-    // For now, return a placeholder response
     res.json({
       message: "Google Sheets export — configure GOOGLE_SHEETS_CREDENTIALS to enable",
       taskId: id,

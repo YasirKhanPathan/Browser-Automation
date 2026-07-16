@@ -135,13 +135,14 @@ export function stopScheduler() {
   console.log("[Scheduler] Stopped all scheduled tasks");
 }
 
-export async function addSchedule(taskId: string, cronExpr: string, notifyEmail?: string) {
+export async function addSchedule(userId: string, taskId: string, cronExpr: string, notifyEmail?: string) {
   if (!cron.validate(cronExpr)) {
     throw new Error(`Invalid cron expression: ${cronExpr}`);
   }
 
   const schedule = await prisma.schedule.create({
     data: {
+      userId,
       taskId,
       cronExpr,
       notifyEmail: notifyEmail || null,

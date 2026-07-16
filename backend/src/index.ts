@@ -5,6 +5,7 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import { PrismaClient } from "@prisma/client";
+import authRoutes from "./routes/auth";
 import taskRoutes from "./routes/tasks";
 import scrapeRoutes from "./routes/scrape";
 import formRoutes from "./routes/forms";
@@ -28,6 +29,7 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+app.use("/api/auth", authRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/tasks", exportRoutes);
 app.use("/api/scrape", scrapeRoutes);

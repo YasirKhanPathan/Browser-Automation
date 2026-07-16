@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../index";
 import { z } from "zod";
+import { authMiddleware, AuthRequest } from "../middleware/auth";
 
 const router = Router();
 
@@ -11,10 +12,11 @@ const createTaskSchema = z.object({
   config: z.any().optional(),
 });
 
-router.get("/", async (_req: Request, res: Response) => {
+router.get("/", authMiddleware, async (req: Request, res: Response) => {
   try {
-    const { type, status } = _req.query;
-    const where: any = {};
+    const authReq = req as AuthRequest;
+    const { type, status } = req.query;
+    const where: any = { userId: authReq.userId };
     if (type) where.type = type;
     if (status) where.status = status;
 
@@ -29,10 +31,11 @@ router.get("/", async (_req: Request, res: Response) => {
   }
 });
 
-router.get("/:id", async (req: Request, res: Response) => {
+router.get("/:id", authMiddleware, async (req: Request, res: Response) => {
   try {
-    const task = await prisma.task.findUnique({
-      where: { id: req.params.id },
+    const authReq = req as AuthRequest;
+    const task = await prisma.task.findFirst({
+      where: { id: req.params.id, userId: authReq.userId },
       include: { results: true, screenshots: true },
     });
     if (!task) return res.status(404).json({ error: "Task not found" });
@@ -42,11 +45,13 @@ router.get("/:id", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/", async (req: Request, res: Response) => {
+router.post("/", authMiddleware, async (req: Request, res: Response) => {
   try {
+    const authReq = req as AuthRequest;
     const body = createTaskSchema.parse(req.body);
     const task = await prisma.task.create({
       data: {
+        userId: authReq.userId!,
         name: body.name,
         type: body.type,
         description: body.description,
@@ -62,9 +67,12 @@ router.post("/", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/:id/execute", async (req: Request, res: Response) => {
+router.post("/:id/execute", authMiddleware, async (req: Request, res: Response) => {
   try {
-    const task = await prisma.task.findUnique({ where: { id: req.params.id } });
+    const authReq = req as AuthRequest;
+    const task = await prisma.task.findFirst({
+      where: { id: req.params.id, userId: authReq.userId },
+    });
     if (!task) return res.status(404).json({ error: "Task not found" });
 
     await prisma.task.update({
@@ -92,7 +100,6 @@ router.post("/:id/execute", async (req: Request, res: Response) => {
         data: { status: "COMPLETED" },
       });
 
-      // Fire webhooks
       try {
         const { fireWebhooksForTask } = await import("../services/webhook");
         await fireWebhooksForTask(task.id, "completed", result);
@@ -122,8 +129,13 @@ router.post("/:id/execute", async (req: Request, res: Response) => {
   }
 });
 
-router.delete("/:id", async (req: Request, res: Response) => {
+router.delete("/:id", authMiddleware, async (req: Request, res: Response) => {
   try {
+    const authReq = req as AuthRequest;
+    const task = await prisma.task.findFirst({
+      where: { id: req.params.id, userId: authReq.userId },
+    });
+    if (!task) return res.status(404).json({ error: "Task not found" });
     await prisma.task.delete({ where: { id: req.params.id } });
     res.json({ message: "Task deleted" });
   } catch (error) {

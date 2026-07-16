@@ -1,14 +1,15 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../index";
 import { fireWebhook } from "../services/webhook";
-import crypto from "crypto";
+import { authMiddleware, AuthRequest } from "../middleware/auth";
 
 const router = Router();
 
-router.get("/", async (req: Request, res: Response) => {
+router.get("/", authMiddleware, async (req: Request, res: Response) => {
   try {
+    const authReq = req as AuthRequest;
     const { taskId } = req.query;
-    const where: any = {};
+    const where: any = { userId: authReq.userId };
     if (taskId) where.taskId = taskId;
 
     const webhooks = await prisma.webhook.findMany({
@@ -22,17 +23,19 @@ router.get("/", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/", async (req: Request, res: Response) => {
+router.post("/", authMiddleware, async (req: Request, res: Response) => {
   try {
+    const authReq = req as AuthRequest;
     const { taskId, url, secret, events } = req.body;
     if (!taskId) return res.status(400).json({ error: "taskId is required" });
     if (!url) return res.status(400).json({ error: "url is required" });
 
-    const task = await prisma.task.findUnique({ where: { id: taskId } });
+    const task = await prisma.task.findFirst({ where: { id: taskId, userId: authReq.userId } });
     if (!task) return res.status(404).json({ error: "Task not found" });
 
     const webhook = await prisma.webhook.create({
       data: {
+        userId: authReq.userId!,
         taskId,
         url,
         secret: secret || null,
@@ -46,21 +49,33 @@ router.post("/", async (req: Request, res: Response) => {
   }
 });
 
-router.patch("/:id", async (req: Request, res: Response) => {
+router.patch("/:id", authMiddleware, async (req: Request, res: Response) => {
   try {
+    const authReq = req as AuthRequest;
+    const webhook = await prisma.webhook.findFirst({
+      where: { id: req.params.id, userId: authReq.userId },
+    });
+    if (!webhook) return res.status(404).json({ error: "Webhook not found" });
+
     const { enabled } = req.body;
-    const webhook = await prisma.webhook.update({
+    const updated = await prisma.webhook.update({
       where: { id: req.params.id },
       data: { enabled },
     });
-    res.json(webhook);
+    res.json(updated);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.delete("/:id", async (req: Request, res: Response) => {
+router.delete("/:id", authMiddleware, async (req: Request, res: Response) => {
   try {
+    const authReq = req as AuthRequest;
+    const webhook = await prisma.webhook.findFirst({
+      where: { id: req.params.id, userId: authReq.userId },
+    });
+    if (!webhook) return res.status(404).json({ error: "Webhook not found" });
+
     await prisma.webhook.delete({ where: { id: req.params.id } });
     res.json({ message: "Webhook deleted" });
   } catch (error: any) {
@@ -68,9 +83,12 @@ router.delete("/:id", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/:id/test", async (req: Request, res: Response) => {
+router.post("/:id/test", authMiddleware, async (req: Request, res: Response) => {
   try {
-    const webhook = await prisma.webhook.findUnique({ where: { id: req.params.id } });
+    const authReq = req as AuthRequest;
+    const webhook = await prisma.webhook.findFirst({
+      where: { id: req.params.id, userId: authReq.userId },
+    });
     if (!webhook) return res.status(404).json({ error: "Webhook not found" });
 
     const payload = {

@@ -1,10 +1,31 @@
 const API_BASE = "";
 
+function getAuthToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("token");
+}
+
 async function apiFetch(path: string, options?: RequestInit) {
+  const token = getAuthToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options?.headers as Record<string, string>),
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers,
   });
+
+  if (res.status === 401) {
+    localStorage.removeItem("token");
+    window.location.href = "/login";
+    throw new Error("Session expired. Please log in again.");
+  }
+
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || `HTTP ${res.status}`);
@@ -91,10 +112,14 @@ export const publicApi = {
 
 export const exportApi = {
   download: (taskId: string, format: "csv" | "json") => {
+    const token = getAuthToken();
     window.open(`/api/tasks/${taskId}/export?format=${format}`, "_blank");
   },
   copyJson: async (taskId: string) => {
-    const res = await fetch(`/api/tasks/${taskId}/export?format=json`);
+    const token = getAuthToken();
+    const res = await fetch(`/api/tasks/${taskId}/export?format=json`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
     const data = await res.json();
     await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
     return data;

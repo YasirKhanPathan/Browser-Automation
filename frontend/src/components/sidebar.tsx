@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/auth-context";
 import {
   LayoutDashboard,
   Globe,
@@ -14,7 +15,8 @@ import {
   History,
   BarChart3,
   Bot,
-  Settings,
+  LogOut,
+  User,
 } from "lucide-react";
 
 const navItems = [
@@ -36,10 +38,10 @@ interface SidebarProps {
 
 export function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const { user, logout } = useAuth();
 
   return (
     <>
-      {/* Mobile overlay */}
       {open && (
         <div
           className="fixed inset-0 z-30 bg-black/50 lg:hidden"
@@ -96,12 +98,26 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </nav>
 
           <div className="border-t p-3">
-            <div className="rounded-lg bg-gradient-to-br from-violet-500/5 to-purple-500/5 p-4">
-              <div className="flex items-center gap-2">
-                <Settings className="h-4 w-4 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">v1.0.0</span>
+            {user && (
+              <div className="mb-3 p-3 rounded-lg bg-muted/50">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-500/10">
+                    <User className="h-4 w-4 text-violet-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{user.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
+            <button
+              onClick={logout}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-all duration-200"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign Out
+            </button>
           </div>
         </div>
       </aside>
