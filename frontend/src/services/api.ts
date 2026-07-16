@@ -1,71 +1,54 @@
-import axios from "axios";
+const API_BASE = "";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
-
-const api = axios.create({
-  baseURL: API_URL,
-  headers: { "Content-Type": "application/json" },
-});
-
-api.interceptors.response.use(
-  (res) => res,
-  (error) => {
-    const message =
-      error.response?.data?.error ||
-      error.response?.data?.message ||
-      error.message ||
-      "An error occurred";
-    return Promise.reject(new Error(message));
+async function apiFetch(path: string, options?: RequestInit) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { "Content-Type": "application/json" },
+    ...options,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
   }
-);
+  return res.json();
+}
 
 export const tasksApi = {
-  list: (params?: { type?: string; status?: string }) =>
-    api.get("/api/tasks", { params }).then((r) => r.data),
-
-  get: (id: string) =>
-    api.get(`/api/tasks/${id}`).then((r) => r.data),
-
+  list: (params?: { type?: string; status?: string }) => {
+    const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+    return apiFetch(`/api/tasks${qs}`);
+  },
+  get: (id: string) => apiFetch(`/api/tasks/${id}`),
   create: (data: { name: string; type: string; description: string; config?: any }) =>
-    api.post("/api/tasks", data).then((r) => r.data),
-
+    apiFetch("/api/tasks", { method: "POST", body: JSON.stringify(data) }),
   execute: (id: string) =>
-    api.post(`/api/tasks/${id}/execute`).then((r) => r.data),
-
+    apiFetch(`/api/tasks/${id}/execute`, { method: "POST" }),
   delete: (id: string) =>
-    api.delete(`/api/tasks/${id}`).then((r) => r.data),
+    apiFetch(`/api/tasks/${id}`, { method: "DELETE" }),
 };
 
 export const scrapeApi = {
   analyze: (url: string) =>
-    api.post("/api/scrape/analyze", { url }).then((r) => r.data),
-
+    apiFetch("/api/scrape/analyze", { method: "POST", body: JSON.stringify({ url }) }),
   execute: (taskId: string, url: string, selectors: any) =>
-    api.post("/api/scrape/execute", { taskId, url, selectors }).then((r) => r.data),
+    apiFetch("/api/scrape/execute", { method: "POST", body: JSON.stringify({ taskId, url, selectors }) }),
 };
 
 export const formsApi = {
   analyze: (url: string) =>
-    api.post("/api/forms/analyze", { url }).then((r) => r.data),
-
+    apiFetch("/api/forms/analyze", { method: "POST", body: JSON.stringify({ url }) }),
   execute: (taskId: string, url: string, fields: any) =>
-    api.post("/api/forms/execute", { taskId, url, fields }).then((r) => r.data),
+    apiFetch("/api/forms/execute", { method: "POST", body: JSON.stringify({ taskId, url, fields }) }),
 };
 
 export const screenshotsApi = {
   capture: (taskId: string, url: string, options?: { fullPage?: boolean }) =>
-    api.post("/api/screenshots/capture", { taskId, url, ...options }).then((r) => r.data),
-
-  list: (taskId: string) =>
-    api.get(`/api/screenshots/${taskId}`).then((r) => r.data),
+    apiFetch("/api/screenshots/capture", { method: "POST", body: JSON.stringify({ taskId, url, ...options }) }),
+  list: (taskId: string) => apiFetch(`/api/screenshots/${taskId}`),
 };
 
 export const aiApi = {
   plan: (description: string) =>
-    api.post("/api/ai/plan", { description }).then((r) => r.data),
-
+    apiFetch("/api/ai/plan", { method: "POST", body: JSON.stringify({ description }) }),
   analyzePage: (url: string) =>
-    api.post("/api/ai/analyze-page", { url }).then((r) => r.data),
+    apiFetch("/api/ai/analyze-page", { method: "POST", body: JSON.stringify({ url }) }),
 };
-
-export default api;

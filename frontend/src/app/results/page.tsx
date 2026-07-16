@@ -5,54 +5,123 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { BarChart3, Clock, Download, ExternalLink, Camera, CheckCircle2, XCircle, Image } from "lucide-react";
-import { useEffect, useState } from "react";
-import { tasksApi } from "@/services/api";
+import { BarChart3, Clock, Download, ExternalLink, CheckCircle2, XCircle, Image, Loader2 } from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
+import toast from "react-hot-toast";
 
 export default function ResultsPage() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [selected, setSelected] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    tasksApi.list().then((data) => setTasks(data.tasks || [])).catch(() => {});
+    setLoading(true);
+    fetch("/api/tasks")
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        const list = data.tasks || [];
+        setTasks(list);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch tasks:", err);
+        setError(err.message || "Failed to load results");
+        setLoading(false);
+      });
+  }, []);
+
+  const handleSelect = useCallback((task: any) => {
+    setSelected(task);
+    // Fetch full task details with results and screenshots
+    setDetailLoading(true);
+    fetch(`/api/tasks/${task.id}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((detail) => {
+        setSelected(detail);
+        setDetailLoading(false);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch task detail:", err);
+        toast.error("Failed to load task details");
+        setDetailLoading(false);
+      });
   }, []);
 
   const completed = tasks.filter((t) => t.status === "COMPLETED");
 
-  const renderData = (task: any) => {
+  const renderScreenshot = (task: any) => {
+    const screenshots = task.screenshots || [];
+    const resultData = task.results?.[0]?.data;
+
+    // Try screenshots array first, then result data URL
+    const imgUrl = screenshots.length > 0
+      ? `/uploads/screenshots/${screenshots[0].filename}`
+      : resultData?.url || null;
+
+    if (!imgUrl) {
+      return (
+        <div className="text-center py-12">
+          <Image className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
+          <p className="text-muted-foreground">No screenshot available</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="rounded-lg border overflow-hidden bg-muted/30">
+          <img
+            src={imgUrl}
+            alt={task.name}
+            className="w-full"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = "none";
+              (e.target as HTMLImageElement).nextElementSibling?.classList.remove("hidden");
+            }}
+          />
+          <div className="hidden p-8 text-center text-muted-foreground">
+            <Image className="h-8 w-8 mx-auto mb-2 opacity-50" />
+            <p className="text-sm">Failed to load image: {imgUrl}</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" asChild>
+            <a href={imgUrl} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="mr-1 h-3 w-3" /> Open Full Size
+            </a>
+          </Button>
+          <Button size="sm" variant="outline" asChild>
+            <a href={imgUrl} download>
+              <Download className="mr-1 h-3 w-3" /> Download
+            </a>
+          </Button>
+        </div>
+        {screenshots.length > 0 && (
+          <p className="text-xs text-muted-foreground">
+            Captured: {screenshots[0].pageUrl} — {new Date(screenshots[0].createdAt).toLocaleString()}
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  const renderScrapeData = (task: any) => {
     const result = task.results?.[0];
-    if (!result?.data) return <p className="text-muted-foreground text-center py-8">No data available</p>;
+    if (!result?.data) {
+      return <p className="text-muted-foreground text-center py-8">No data available</p>;
+    }
 
     const data = result.data;
 
-    // Screenshot task — show image
-    if (task.type === "SCREENSHOT") {
-      const imgUrl = data.url || (task.screenshots?.[0] ? `/uploads/screenshots/${task.screenshots[0].filename}` : null);
-      if (imgUrl) {
-        return (
-          <div className="space-y-4">
-            <div className="rounded-lg border overflow-hidden bg-muted/30">
-              <img src={imgUrl} alt={task.name} className="w-full" />
-            </div>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" asChild>
-                <a href={imgUrl} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="mr-1 h-3 w-3" /> Open Full Size
-                </a>
-              </Button>
-              <Button size="sm" variant="outline" asChild>
-                <a href={imgUrl} download>
-                  <Download className="mr-1 h-3 w-3" /> Download
-                </a>
-              </Button>
-            </div>
-          </div>
-        );
-      }
-    }
-
-    // Scrape task — show table
-    if (task.type === "SCRAPE" && Array.isArray(data) && data.length > 0) {
+    if (Array.isArray(data) && data.length > 0) {
       const keys = Object.keys(data[0]);
       return (
         <div className="overflow-x-auto rounded-lg border">
@@ -60,9 +129,7 @@ export default function ResultsPage() {
             <thead>
               <tr className="border-b bg-muted/50">
                 {keys.map((key) => (
-                  <th key={key} className="px-4 py-2 text-left font-medium text-muted-foreground">
-                    {key}
-                  </th>
+                  <th key={key} className="px-4 py-2 text-left font-medium text-muted-foreground">{key}</th>
                 ))}
               </tr>
             </thead>
@@ -70,117 +137,44 @@ export default function ResultsPage() {
               {data.slice(0, 100).map((row: any, i: number) => (
                 <tr key={i} className="border-b hover:bg-accent/50">
                   {keys.map((key) => (
-                    <td key={key} className="px-4 py-2 max-w-[300px] truncate">
-                      {String(row[key] ?? "")}
-                    </td>
+                    <td key={key} className="px-4 py-2 max-w-[300px] truncate">{String(row[key] ?? "")}</td>
                   ))}
                 </tr>
               ))}
             </tbody>
           </table>
           {data.length > 100 && (
-            <p className="text-xs text-muted-foreground text-center py-2">
-              Showing 100 of {data.length} rows
-            </p>
+            <p className="text-xs text-muted-foreground text-center py-2">Showing 100 of {data.length} rows</p>
           )}
         </div>
       );
     }
 
-    // Form fill task — show field results
-    if (task.type === "FORM_FILL" && data.filled) {
-      return (
-        <div className="space-y-2">
-          {Object.entries(data.filled).map(([field, value]) => {
-            const failed = String(value).startsWith("failed");
-            return (
-              <div key={field} className="flex items-center justify-between rounded-lg border p-3">
-                <span className="font-medium text-sm">{field}</span>
-                <span className={`text-sm ${failed ? "text-destructive" : "text-emerald-500"}`}>
-                  {String(value)}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      );
+    if (typeof data === "object" && data !== null && !Array.isArray(data)) {
+      if (data.filled) {
+        return (
+          <div className="space-y-2">
+            {Object.entries(data.filled).map(([field, value]) => {
+              const failed = String(value).startsWith("failed");
+              return (
+                <div key={field} className="flex items-center justify-between rounded-lg border p-3">
+                  <span className="font-medium text-sm">{field}</span>
+                  <span className={`text-sm ${failed ? "text-destructive" : "text-emerald-500"}`}>{String(value)}</span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      }
+
+      if (data.url) {
+        return renderScreenshot(task);
+      }
     }
 
-    // Default — show JSON
     return (
       <div className="rounded-lg border p-4 bg-muted/30">
-        <pre className="text-sm overflow-auto max-h-96 whitespace-pre-wrap">
-          {JSON.stringify(data, null, 2)}
-        </pre>
-      </div>
-    );
-  };
-
-  const renderScreenshots = (task: any) => {
-    const screenshots = task.screenshots || [];
-    const resultData = task.results?.[0]?.data;
-
-    // Also check result data for screenshot URL
-    if (screenshots.length === 0 && resultData?.url) {
-      return (
-        <div className="space-y-4">
-          <div className="rounded-lg border overflow-hidden bg-muted/30">
-            <img src={resultData.url} alt={task.name} className="w-full" />
-          </div>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" asChild>
-              <a href={resultData.url} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="mr-1 h-3 w-3" /> Open
-              </a>
-            </Button>
-            <Button size="sm" variant="outline" asChild>
-              <a href={resultData.url} download>
-                <Download className="mr-1 h-3 w-3" /> Download
-              </a>
-            </Button>
-          </div>
-        </div>
-      );
-    }
-
-    if (screenshots.length === 0) {
-      return (
-        <div className="text-center py-12">
-          <Image className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
-          <p className="text-muted-foreground">No screenshots for this task</p>
-        </div>
-      );
-    }
-
-    return (
-      <div className="grid gap-4 sm:grid-cols-2">
-        {screenshots.map((s: any) => (
-          <div key={s.id} className="rounded-lg border overflow-hidden">
-            <div className="bg-muted/30">
-              <img
-                src={`/uploads/screenshots/${s.filename}`}
-                alt={s.pageUrl}
-                className="w-full"
-              />
-            </div>
-            <div className="p-3">
-              <p className="text-xs text-muted-foreground truncate">{s.pageUrl}</p>
-              <p className="text-xs text-muted-foreground">{new Date(s.createdAt).toLocaleString()}</p>
-              <div className="flex gap-2 mt-2">
-                <Button size="sm" variant="outline" className="flex-1" asChild>
-                  <a href={`/uploads/screenshots/${s.filename}`} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="mr-1 h-3 w-3" /> View
-                  </a>
-                </Button>
-                <Button size="sm" variant="outline" className="flex-1" asChild>
-                  <a href={`/uploads/screenshots/${s.filename}`} download>
-                    <Download className="mr-1 h-3 w-3" /> Save
-                  </a>
-                </Button>
-              </div>
-            </div>
-          </div>
-        ))}
+        <pre className="text-sm overflow-auto max-h-96 whitespace-pre-wrap">{JSON.stringify(data, null, 2)}</pre>
       </div>
     );
   };
@@ -195,19 +189,29 @@ export default function ResultsPage() {
             </div>
             Results Viewer
           </h1>
-          <p className="text-muted-foreground mt-1">
-            View and export data from your completed tasks
-          </p>
+          <p className="text-muted-foreground mt-1">View and export data from your completed tasks</p>
         </div>
 
-        {completed.length === 0 ? (
+        {loading ? (
+          <Card className="border-border/50">
+            <CardContent className="p-12 text-center">
+              <Loader2 className="h-8 w-8 mx-auto mb-3 animate-spin text-muted-foreground" />
+              <p className="text-muted-foreground">Loading results...</p>
+            </CardContent>
+          </Card>
+        ) : error ? (
+          <Card className="border-destructive/50 bg-destructive/5">
+            <CardContent className="p-12 text-center">
+              <XCircle className="h-8 w-8 mx-auto mb-3 text-destructive" />
+              <p className="text-destructive font-medium">{error}</p>
+            </CardContent>
+          </Card>
+        ) : completed.length === 0 ? (
           <Card className="border-border/50">
             <CardContent className="p-12 text-center">
               <BarChart3 className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
               <p className="text-muted-foreground">No completed tasks yet</p>
-              <p className="text-sm text-muted-foreground/70 mt-1">
-                Run a scraper or screenshot task to see results here
-              </p>
+              <p className="text-sm text-muted-foreground/70 mt-1">Run a scraper or screenshot task to see results here</p>
             </CardContent>
           </Card>
         ) : (
@@ -219,7 +223,7 @@ export default function ResultsPage() {
                   className={`cursor-pointer transition-all hover:shadow-md ${
                     selected?.id === task.id ? "border-violet-500 shadow-violet-500/10" : "border-border/50"
                   }`}
-                  onClick={() => setSelected(task)}
+                  onClick={() => handleSelect(task)}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
@@ -252,41 +256,47 @@ export default function ResultsPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <Tabs defaultValue="data">
-                      <TabsList>
-                        <TabsTrigger value="data">Results</TabsTrigger>
-                        <TabsTrigger value="screenshots">
-                          Screenshots ({(selected.screenshots || []).length})
-                        </TabsTrigger>
-                        <TabsTrigger value="log">Execution Log</TabsTrigger>
-                      </TabsList>
-                      <TabsContent value="data" className="mt-4">
-                        {renderData(selected)}
-                      </TabsContent>
-                      <TabsContent value="screenshots" className="mt-4">
-                        {renderScreenshots(selected)}
-                      </TabsContent>
-                      <TabsContent value="log" className="mt-4">
-                        <div className="space-y-2">
-                          {(selected.results || []).map((r: any, i: number) => (
-                            <div key={i} className="flex items-center gap-3 rounded-lg border p-3">
-                              {r.status === "SUCCESS" ? (
-                                <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-                              ) : (
-                                <XCircle className="h-4 w-4 text-destructive shrink-0" />
-                              )}
-                              <Badge variant={r.status === "SUCCESS" ? "success" : "destructive"}>
-                                {r.status}
-                              </Badge>
-                              <span className="text-sm">{r.duration ? `${r.duration}ms` : "—"}</span>
-                              {r.errorMsg && (
-                                <span className="text-xs text-destructive truncate flex-1">{r.errorMsg}</span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </TabsContent>
-                    </Tabs>
+                    {detailLoading ? (
+                      <div className="flex items-center justify-center py-12">
+                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : (
+                      <Tabs defaultValue="data">
+                        <TabsList>
+                          <TabsTrigger value="data">Results</TabsTrigger>
+                          <TabsTrigger value="screenshots">
+                            Screenshots ({(selected.screenshots || []).length})
+                          </TabsTrigger>
+                          <TabsTrigger value="log">Execution Log</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="data" className="mt-4">
+                          {renderScrapeData(selected)}
+                        </TabsContent>
+                        <TabsContent value="screenshots" className="mt-4">
+                          {renderScreenshot(selected)}
+                        </TabsContent>
+                        <TabsContent value="log" className="mt-4">
+                          <div className="space-y-2">
+                            {(selected.results || []).map((r: any, i: number) => (
+                              <div key={i} className="flex items-center gap-3 rounded-lg border p-3">
+                                {r.status === "SUCCESS" ? (
+                                  <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                                ) : (
+                                  <XCircle className="h-4 w-4 text-destructive shrink-0" />
+                                )}
+                                <Badge variant={r.status === "SUCCESS" ? "success" : "destructive"}>
+                                  {r.status}
+                                </Badge>
+                                <span className="text-sm">{r.duration ? `${r.duration}ms` : "—"}</span>
+                                {r.errorMsg && (
+                                  <span className="text-xs text-destructive truncate flex-1">{r.errorMsg}</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </TabsContent>
+                      </Tabs>
+                    )}
                   </CardContent>
                 </Card>
               ) : (

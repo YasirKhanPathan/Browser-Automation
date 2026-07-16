@@ -9,6 +9,7 @@ const tabsVariants = cva(
 );
 
 interface TabsProps extends React.HTMLAttributes<HTMLDivElement> {
+  defaultValue?: string;
   value?: string;
   onValueChange?: (value: string) => void;
 }
@@ -16,13 +17,24 @@ interface TabsProps extends React.HTMLAttributes<HTMLDivElement> {
 const TabsContext = React.createContext<{ value?: string; onValueChange?: (v: string) => void }>({});
 
 const Tabs = React.forwardRef<HTMLDivElement, TabsProps>(
-  ({ className, value, onValueChange, children, ...props }, ref) => (
-    <TabsContext.Provider value={{ value, onValueChange }}>
-      <div ref={ref} className={cn("flex flex-col gap-2", className)} {...props}>
-        {children}
-      </div>
-    </TabsContext.Provider>
-  )
+  ({ className, defaultValue, value: controlledValue, onValueChange, children, ...props }, ref) => {
+    const [internalValue, setInternalValue] = React.useState(defaultValue);
+    const value = controlledValue !== undefined ? controlledValue : internalValue;
+    const handleChange = React.useCallback(
+      (v: string) => {
+        setInternalValue(v);
+        onValueChange?.(v);
+      },
+      [onValueChange]
+    );
+    return (
+      <TabsContext.Provider value={{ value, onValueChange: handleChange }}>
+        <div ref={ref} className={cn("flex flex-col gap-2", className)} {...props}>
+          {children}
+        </div>
+      </TabsContext.Provider>
+    );
+  }
 );
 Tabs.displayName = "Tabs";
 
