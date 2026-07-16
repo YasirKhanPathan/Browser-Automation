@@ -2,6 +2,9 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { prisma } from "../index";
 
+if (!process.env.JWT_SECRET) {
+  console.error("[Auth] FATAL: JWT_SECRET environment variable is not set. Set it in backend/.env");
+}
 const JWT_SECRET = process.env.JWT_SECRET || "browser-auto-jwt-secret-change-in-production";
 const JWT_EXPIRES_IN = "7d";
 

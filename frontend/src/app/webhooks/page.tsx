@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Webhook, Loader2, AlertCircle, Plus, Trash2, Play, Key, Copy } from "lucide-react";
-import { useState, useEffect } from "react";
-import { webhooksApi, tasksApi, publicApi } from "@/services/api";
+import { useState, useCallback, useMemo } from "react";
+import useSWR from "swr";
+import { webhooksApi, tasksApi, publicApi, authFetcher } from "@/services/api";
 import toast from "react-hot-toast";
 
 interface WebhookData {
@@ -23,9 +24,19 @@ interface WebhookData {
 }
 
 export default function WebhooksPage() {
-  const [webhooks, setWebhooks] = useState<WebhookData[]>([]);
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: hookData, isLoading: hookLoading, mutate: mutateWebhooks } = useSWR("/api/webhooks", authFetcher, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+  });
+  const { data: taskData } = useSWR("/api/tasks", authFetcher, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+  });
+
+  const webhooks = useMemo(() => (hookData?.webhooks || []) as WebhookData[], [hookData]);
+  const tasks = useMemo(() => taskData?.tasks || [], [taskData]);
+  const loading = hookLoading;
+
   const [showCreate, setShowCreate] = useState(false);
   const [selectedTask, setSelectedTask] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
@@ -34,25 +45,6 @@ export default function WebhooksPage() {
   const [creating, setCreating] = useState(false);
   const [showApiKey, setShowApiKey] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState("");
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-    try {
-      const [hookData, taskData] = await Promise.all([
-        webhooksApi.list(),
-        tasksApi.list(),
-      ]);
-      setWebhooks(hookData.webhooks || []);
-      setTasks(taskData.tasks || []);
-    } catch (err: any) {
-      toast.error("Failed to load data");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleCreate = async () => {
     if (!selectedTask) return toast.error("Select a task");
@@ -70,7 +62,7 @@ export default function WebhooksPage() {
       setSelectedTask("");
       setWebhookUrl("");
       setSecret("");
-      loadData();
+      mutateWebhooks();
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -82,7 +74,7 @@ export default function WebhooksPage() {
     try {
       await webhooksApi.toggle(id, enabled);
       toast.success(enabled ? "Webhook enabled" : "Webhook disabled");
-      loadData();
+      mutateWebhooks();
     } catch (err: any) {
       toast.error(err.message);
     }
@@ -92,7 +84,7 @@ export default function WebhooksPage() {
     try {
       await webhooksApi.delete(id);
       toast.success("Webhook deleted");
-      loadData();
+      mutateWebhooks();
     } catch (err: any) {
       toast.error(err.message);
     }

@@ -11,9 +11,8 @@ const transporter = nodemailer.createTransport({
 });
 
 export async function sendEmail(to: string, subject: string, body: string): Promise<boolean> {
-  if (!process.env.SMTP_USER) {
-    console.log("[Notifier] SMTP not configured, skipping email");
-    return false;
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    throw new Error("SMTP not configured. Set SMTP_USER and SMTP_PASS in backend/.env");
   }
 
   try {
@@ -27,7 +26,7 @@ export async function sendEmail(to: string, subject: string, body: string): Prom
     return true;
   } catch (error: any) {
     console.error(`[Notifier] Failed to send email:`, error.message);
-    return false;
+    throw new Error(`Failed to send email: ${error.message}`);
   }
 }
 

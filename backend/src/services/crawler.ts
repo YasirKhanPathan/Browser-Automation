@@ -1,17 +1,7 @@
-import { chromium, Browser, BrowserContext, Page } from "playwright";
+import { BrowserContext, Page } from "playwright";
 import { callLLM, parseJSON } from "./ai";
 import { extractStructuredData } from "./ai-extractor";
-
-let browser: Browser | null = null;
-
-async function getBrowser(): Promise<Browser> {
-  if (!browser || !browser.isConnected()) {
-    browser = await chromium.launch({
-      headless: process.env.HEADLESS !== "false",
-    });
-  }
-  return browser;
-}
+import { getBrowser } from "./browser";
 
 export interface CrawlOptions {
   maxPages: number;
@@ -32,22 +22,62 @@ async function discoverNextPage(page: Page, strategy: string, nextSelector?: str
     // Manual selector: find the next page link
     const href = await page.evaluate((sel) => {
       const el = document.querySelector(sel);
-      if (el && (el.tagName === "A" || el.closest("a"))) {
-        return (el.tagName === "A" ? el : el.closest("a"))?.getAttribute("href");
+      if (!el) return null;
+
+      // Check if element is an anchor or has an anchor ancestor
+      if (el.tagName === "A") {
+        return (el as HTMLAnchorElement).getAttribute("href");
       }
-      return null;
+      const anchor = el.closest("a");
+      if (anchor) {
+        return (anchor as HTMLAnchorElement).getAttribute("href");
+      }
+
+      // Check for onclick handler or data attributes
+      const onclick = el.getAttribute("onclick");
+      if (onclick) {
+        const urlMatch = onclick.match(/(?:navigate|location|href)\s*[=(]\s*['"]([^'"]+)['"]/);
+        if (urlMatch) return urlMatch[1];
+      }
+
+      // Check for data-href or data-url attributes
+      return el.getAttribute("data-href") || el.getAttribute("data-url") || null;
     }, nextSelector);
+
+    if (!href) {
+      console.log(`[Crawler] Selector '${nextSelector}' found no href`);
+    }
     return href || null;
   }
 
   if (strategy === "ai") {
     // AI-powered: detect next page link from page HTML
     const html = await page.evaluate(() => {
-      const nav = document.querySelector("nav, .pagination, [class*='pagination'], [class*='pager']");
-      return nav ? nav.outerHTML : document.body.innerHTML.slice(0, 5000);
+      // First, look for common pagination containers
+      const nav = document.querySelector("nav, .pagination, [class*='pagination'], [class*='pager'], [class*='page-nav']");
+      if (nav) return nav.outerHTML;
+
+      // Look for elements with "next" text or common pagination classes
+      const nextEl = document.querySelector('a[rel="next"], [class*="next"], [aria-label*="next" i], [aria-label*="Next"]');
+      if (nextEl) {
+        // Get parent context around the next element
+        const parent = nextEl.closest("nav, div, ul, ol") || nextEl.parentElement;
+        if (parent) return parent.outerHTML;
+        return nextEl.outerHTML;
+      }
+
+      // Fallback: search the LAST 5000 chars of the page (where pagination usually lives)
+      const bodyHtml = document.body.innerHTML;
+      if (bodyHtml.length > 5000) {
+        // Get the last 5000 chars, but find a good starting point (before a tag)
+        const tail = bodyHtml.slice(-5000);
+        const firstTag = tail.indexOf("<");
+        return firstTag >= 0 ? tail.slice(firstTag) : tail;
+      }
+      return bodyHtml;
     });
 
-    const prompt = `Given this HTML snippet from a web page, find the URL or href for the "next page" link/button. 
+    const prompt = `Given this HTML snippet from a web page, find the URL or href for the "next page" link/button.
 If there is no next page link, respond with null.
 
 HTML:
@@ -56,10 +86,12 @@ ${html}
 Respond with ONLY a JSON object: {"nextHref": "url or null"}`;
 
     try {
-      const text = await callLLM(prompt, 1);
+      const text = await callLLM(prompt, 2);
       const result = parseJSON(text);
+      console.log(`[Crawler] AI next page found:`, result.nextHref);
       return result.nextHref;
-    } catch {
+    } catch (err: any) {
+      console.log(`[Crawler] AI next page discovery failed:`, err.message);
       return null;
     }
   }
@@ -192,7 +224,12 @@ export async function crawlPages(
             const nextUrl = resolveUrl(url, nextHref);
             if (nextUrl && !visited.has(nextUrl) && nextUrl.startsWith("http")) {
               toVisit.push(nextUrl);
+              console.log(`[Crawler] Next page queued: ${nextUrl}`);
+            } else {
+              console.log(`[Crawler] Resolved URL invalid or already visited: ${nextUrl}`);
             }
+          } else {
+            console.log(`[Crawler] No next page found on ${url} (strategy: ${options.strategy})`);
           }
         }
       } catch (err: any) {

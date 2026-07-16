@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../index";
 import { scrapePage, scrapePageDirect } from "../services/scraper";
-import { smartScrape } from "../services/ai-extractor";
+import { smartScrape, ScrapeEngine } from "../services/ai-extractor";
 import { crawlPages, CrawlOptions } from "../services/crawler";
 import { authMiddleware, AuthRequest } from "../middleware/auth";
 
@@ -85,10 +85,11 @@ router.post("/execute", authMiddleware, async (req: Request, res: Response) => {
 router.post("/smart", authMiddleware, async (req: Request, res: Response) => {
   try {
     const authReq = req as AuthRequest;
-    const { url, description } = req.body;
+    const { url, description, engine } = req.body;
     if (!url) return res.status(400).json({ error: "URL is required" });
     if (!description) return res.status(400).json({ error: "Description is required for smart scrape" });
 
+    const validEngine: ScrapeEngine = ["auto", "lightweight", "playwright"].includes(engine) ? engine : "auto";
     const hostname = new URL(url).hostname;
 
     const task = await prisma.task.create({
@@ -97,7 +98,7 @@ router.post("/smart", authMiddleware, async (req: Request, res: Response) => {
         name: `Smart Scrape: ${hostname}`,
         type: "SCRAPE",
         description: `Smart scrape: ${description}`,
-        config: { url, description, smart: true },
+        config: { url, description, smart: true, engine: validEngine },
       },
     });
 
@@ -108,28 +109,31 @@ router.post("/smart", authMiddleware, async (req: Request, res: Response) => {
 
     const startTime = Date.now();
     try {
-      const result = await smartScrape(url, description);
+      const result = await smartScrape(url, description, validEngine);
       const duration = Date.now() - startTime;
 
-      await prisma.taskResult.create({
-        data: { taskId: task.id, status: "SUCCESS", data: result.structured, duration },
-      });
+      await prisma.$transaction([
+        prisma.taskResult.create({
+          data: { taskId: task.id, status: "SUCCESS", data: result.structured, duration },
+        }),
+        prisma.task.update({
+          where: { id: task.id },
+          data: { status: "COMPLETED" },
+        }),
+      ]);
 
-      await prisma.task.update({
-        where: { id: task.id },
-        data: { status: "COMPLETED" },
-      });
-
-      res.json({ taskId: task.id, data: result.structured, count: Array.isArray(result.structured) ? result.structured.length : 0 });
+      res.json({ taskId: task.id, data: result.structured, count: Array.isArray(result.structured) ? result.structured.length : 0, engine: result.engine });
     } catch (err: any) {
       const duration = Date.now() - startTime;
-      await prisma.taskResult.create({
-        data: { taskId: task.id, status: "ERROR", errorMsg: err.message, duration },
-      });
-      await prisma.task.update({
-        where: { id: task.id },
-        data: { status: "FAILED" },
-      });
+      await prisma.$transaction([
+        prisma.taskResult.create({
+          data: { taskId: task.id, status: "ERROR", errorMsg: err.message, duration },
+        }),
+        prisma.task.update({
+          where: { id: task.id },
+          data: { status: "FAILED" },
+        }),
+      ]);
       throw err;
     }
   } catch (error: any) {
@@ -140,8 +144,9 @@ router.post("/smart", authMiddleware, async (req: Request, res: Response) => {
 router.post("/crawl", authMiddleware, async (req: Request, res: Response) => {
   try {
     const authReq = req as AuthRequest;
-    const { url, description, maxPages = 5, strategy = "ai", nextSelector } = req.body;
+    const { url, description, maxPages: rawMaxPages = 5, strategy = "ai", nextSelector } = req.body;
     if (!url) return res.status(400).json({ error: "URL is required" });
+    const maxPages = Math.min(20, Math.max(1, parseInt(rawMaxPages) || 5));
 
     const hostname = new URL(url).hostname;
 
@@ -166,14 +171,15 @@ router.post("/crawl", authMiddleware, async (req: Request, res: Response) => {
       const result = await crawlPages(url, options);
       const duration = Date.now() - startTime;
 
-      await prisma.taskResult.create({
-        data: { taskId: task.id, status: "SUCCESS", data: result.aggregated, duration },
-      });
-
-      await prisma.task.update({
-        where: { id: task.id },
-        data: { status: "COMPLETED" },
-      });
+      await prisma.$transaction([
+        prisma.taskResult.create({
+          data: { taskId: task.id, status: "SUCCESS", data: result.aggregated, duration },
+        }),
+        prisma.task.update({
+          where: { id: task.id },
+          data: { status: "COMPLETED" },
+        }),
+      ]);
 
       res.json({
         taskId: task.id,
@@ -184,13 +190,15 @@ router.post("/crawl", authMiddleware, async (req: Request, res: Response) => {
       });
     } catch (err: any) {
       const duration = Date.now() - startTime;
-      await prisma.taskResult.create({
-        data: { taskId: task.id, status: "ERROR", errorMsg: err.message, duration },
-      });
-      await prisma.task.update({
-        where: { id: task.id },
-        data: { status: "FAILED" },
-      });
+      await prisma.$transaction([
+        prisma.taskResult.create({
+          data: { taskId: task.id, status: "ERROR", errorMsg: err.message, duration },
+        }),
+        prisma.task.update({
+          where: { id: task.id },
+          data: { status: "FAILED" },
+        }),
+      ]);
       throw err;
     }
   } catch (error: any) {

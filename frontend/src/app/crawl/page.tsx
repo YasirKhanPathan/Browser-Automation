@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Layers, Loader2, AlertCircle, Download } from "lucide-react";
 import { useState } from "react";
-import { scrapeApi } from "@/services/api";
+import { scrapeApi, tasksApi } from "@/services/api";
 import toast from "react-hot-toast";
 
 export default function CrawlPage() {
@@ -50,7 +50,7 @@ export default function CrawlPage() {
   const handleViewResults = async () => {
     if (!results?.taskId) return;
     try {
-      const taskData = await fetch(`/api/tasks/${results.taskId}`).then((r) => r.json());
+      const taskData = await tasksApi.get(results.taskId);
       const resultData = taskData.results?.[0]?.data;
       if (resultData) {
         setResults((prev: any) => ({ ...prev, data: resultData }));

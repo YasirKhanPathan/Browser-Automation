@@ -16,8 +16,9 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { tasksApi } from "@/services/api";
+import { useMemo } from "react";
+import useSWR from "swr";
+import { authFetcher } from "@/services/api";
 import { AiTaskCreator } from "@/components/ai-task-creator";
 
 interface Stats {
@@ -28,21 +29,21 @@ interface Stats {
 }
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<Stats>({ total: 0, completed: 0, failed: 0, running: 0 });
-  const [recentTasks, setRecentTasks] = useState<any[]>([]);
+  const { data } = useSWR("/api/tasks", authFetcher, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+  });
 
-  useEffect(() => {
-    tasksApi.list().then((data) => {
-      const tasks = data.tasks || [];
-      setStats({
-        total: tasks.length,
-        completed: tasks.filter((t: any) => t.status === "COMPLETED").length,
-        failed: tasks.filter((t: any) => t.status === "FAILED").length,
-        running: tasks.filter((t: any) => t.status === "RUNNING" || t.status === "PENDING").length,
-      });
-      setRecentTasks(tasks.slice(0, 5));
-    }).catch(() => {});
-  }, []);
+  const tasks = useMemo(() => data?.tasks || [], [data]);
+
+  const stats = useMemo<Stats>(() => ({
+    total: tasks.length,
+    completed: tasks.filter((t: any) => t.status === "COMPLETED").length,
+    failed: tasks.filter((t: any) => t.status === "FAILED").length,
+    running: tasks.filter((t: any) => t.status === "RUNNING" || t.status === "PENDING").length,
+  }), [tasks]);
+
+  const recentTasks = useMemo(() => tasks.slice(0, 5), [tasks]);
 
   const statCards = [
     { label: "Total Tasks", value: stats.total, icon: TrendingUp, color: "from-violet-500 to-purple-600", shadow: "shadow-violet-500/25" },

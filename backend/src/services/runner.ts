@@ -68,9 +68,7 @@ export async function runTask(task: any) {
       if (!url) throw new Error("No URL configured for screenshot task");
 
       const screenshotsDir = path.join(process.cwd(), "uploads", "screenshots");
-      if (!fs.existsSync(screenshotsDir)) {
-        fs.mkdirSync(screenshotsDir, { recursive: true });
-      }
+      await fs.promises.mkdir(screenshotsDir, { recursive: true });
 
       const filename = `${task.id}-${Date.now()}.png`;
       const filepath = path.join(screenshotsDir, filename);
@@ -102,9 +100,7 @@ export async function runTask(task: any) {
             const targetUrl = extractUrl(config);
             if (!targetUrl) throw new Error("No URL for screenshot step");
             const screenshotsDir = path.join(process.cwd(), "uploads", "screenshots");
-            if (!fs.existsSync(screenshotsDir)) {
-              fs.mkdirSync(screenshotsDir, { recursive: true });
-            }
+            await fs.promises.mkdir(screenshotsDir, { recursive: true });
             const filename = `${task.id}-${Date.now()}.png`;
             const filepath = path.join(screenshotsDir, filename);
             await captureScreenshot(targetUrl, filepath, { fullPage: true });

@@ -21,9 +21,7 @@ router.post("/capture", authMiddleware, async (req: Request, res: Response) => {
     }
 
     const screenshotsDir = path.join(process.cwd(), "uploads", "screenshots");
-    if (!fs.existsSync(screenshotsDir)) {
-      fs.mkdirSync(screenshotsDir, { recursive: true });
-    }
+    await fs.promises.mkdir(screenshotsDir, { recursive: true });
 
     const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
     const filepath = path.join(screenshotsDir, filename);
@@ -33,23 +31,23 @@ router.post("/capture", authMiddleware, async (req: Request, res: Response) => {
     const isUUID = taskId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(taskId);
 
     if (isUUID) {
-      await prisma.screenshot.create({
-        data: { taskId, filename, filepath, pageUrl: url },
-      });
-
-      await prisma.taskResult.create({
-        data: {
-          taskId,
-          status: "SUCCESS",
-          data: { url: `/uploads/screenshots/${filename}`, filename },
-          duration: 0,
-        },
-      });
-
-      await prisma.task.update({
-        where: { id: taskId },
-        data: { status: "COMPLETED" },
-      });
+      await prisma.$transaction([
+        prisma.screenshot.create({
+          data: { taskId, filename, filepath, pageUrl: url },
+        }),
+        prisma.taskResult.create({
+          data: {
+            taskId,
+            status: "SUCCESS",
+            data: { url: `/uploads/screenshots/${filename}`, filename },
+            duration: 0,
+          },
+        }),
+        prisma.task.update({
+          where: { id: taskId },
+          data: { status: "COMPLETED" },
+        }),
+      ]);
     }
 
     res.json({

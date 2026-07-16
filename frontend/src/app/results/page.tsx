@@ -6,31 +6,20 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { BarChart3, Clock, Download, ExternalLink, CheckCircle2, XCircle, Image, Loader2, Copy } from "lucide-react";
-import { useEffect, useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
+import useSWR from "swr";
 import toast from "react-hot-toast";
-import { exportApi, tasksApi } from "@/services/api";
+import { exportApi, tasksApi, authFetcher } from "@/services/api";
 
 export default function ResultsPage() {
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [selected, setSelected] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { data, error, isLoading } = useSWR("/api/tasks", authFetcher, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+  });
 
-  useEffect(() => {
-    setLoading(true);
-    tasksApi.list()
-      .then((data) => {
-        const list = data.tasks || [];
-        setTasks(list);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error("Failed to fetch tasks:", err);
-        setError(err.message || "Failed to load results");
-        setLoading(false);
-      });
-  }, []);
+  const tasks = useMemo(() => data?.tasks || [], [data]);
+  const [selected, setSelected] = useState<any>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   const handleSelect = useCallback((task: any) => {
     setSelected(task);
@@ -48,7 +37,7 @@ export default function ResultsPage() {
       });
   }, []);
 
-  const completed = tasks.filter((t) => t.status === "COMPLETED");
+  const completed = useMemo(() => tasks.filter((t: any) => t.status === "COMPLETED"), [tasks]);
 
   const renderScreenshot = (task: any) => {
     const screenshots = task.screenshots || [];
@@ -185,7 +174,7 @@ export default function ResultsPage() {
           <p className="text-muted-foreground mt-1">View and export data from your completed tasks</p>
         </div>
 
-        {loading ? (
+        {isLoading ? (
           <Card className="border-border/50">
             <CardContent className="p-12 text-center">
               <Loader2 className="h-8 w-8 mx-auto mb-3 animate-spin text-muted-foreground" />
@@ -196,7 +185,7 @@ export default function ResultsPage() {
           <Card className="border-destructive/50 bg-destructive/5">
             <CardContent className="p-12 text-center">
               <XCircle className="h-8 w-8 mx-auto mb-3 text-destructive" />
-              <p className="text-destructive font-medium">{error}</p>
+              <p className="text-destructive font-medium">{error.message}</p>
             </CardContent>
           </Card>
         ) : completed.length === 0 ? (
@@ -210,7 +199,7 @@ export default function ResultsPage() {
         ) : (
           <div className="grid gap-6 lg:grid-cols-3">
             <div className="lg:col-span-1 space-y-2">
-              {completed.map((task) => (
+              {completed.map((task: any) => (
                 <Card
                   key={task.id}
                   className={`cursor-pointer transition-all hover:shadow-md ${

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Globe, Loader2, AlertCircle, Sparkles, Download } from "lucide-react";
+import { Globe, Loader2, AlertCircle, Sparkles, Download, Monitor } from "lucide-react";
 import { useState } from "react";
 import { tasksApi, scrapeApi } from "@/services/api";
 import toast from "react-hot-toast";
@@ -19,6 +19,7 @@ export default function ScrapePage() {
   const [results, setResults] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<"basic" | "smart">("basic");
+  const [forcePlaywright, setForcePlaywright] = useState(false);
 
   const handleScrape = async () => {
     if (!url) return toast.error("Please enter a URL");
@@ -28,7 +29,7 @@ export default function ScrapePage() {
     setError(null);
     try {
       if (mode === "smart" && description.trim()) {
-        const data = await scrapeApi.smart(targetUrl, description);
+        const data = await scrapeApi.smart(targetUrl, description, forcePlaywright ? "playwright" : "auto");
         setResults(data);
         toast.success(`Smart scrape complete — found ${data.count || 0} items`);
       } else {
@@ -149,6 +150,20 @@ export default function ScrapePage() {
                 <p className="text-xs text-muted-foreground">
                   Describe the data you want extracted — AI will structure the output accordingly
                 </p>
+
+                <div className="flex items-center gap-3 pt-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={forcePlaywright}
+                      onChange={(e) => setForcePlaywright(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 accent-violet-500"
+                    />
+                    <Monitor className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Force browser rendering</span>
+                  </label>
+                  <span className="text-xs text-muted-foreground/60">for JS-heavy sites</span>
+                </div>
               </div>
             )}
 
@@ -192,6 +207,11 @@ export default function ScrapePage() {
                 <div className="flex items-center gap-2">
                   <span>Scraped Data</span>
                   {mode === "smart" && <Badge variant="default"><Sparkles className="h-3 w-3 mr-1" />AI</Badge>}
+                  {results.engine && (
+                    <Badge variant="outline" className="text-xs">
+                      {results.engine === "playwright" ? "Browser" : "Lightweight"}
+                    </Badge>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-normal text-muted-foreground">

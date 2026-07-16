@@ -5,53 +5,45 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { History, Trash2, RotateCcw, Clock, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { tasksApi } from "@/services/api";
+import { useCallback, useMemo } from "react";
+import useSWR from "swr";
+import { tasksApi, authFetcher } from "@/services/api";
 import toast from "react-hot-toast";
 
 export default function HistoryPage() {
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, error, isLoading, mutate } = useSWR("/api/tasks", authFetcher, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+  });
 
-  const loadTasks = async () => {
-    setLoading(true);
-    try {
-      const data = await tasksApi.list();
-      setTasks(data.tasks || []);
-    } catch {
-    } finally {
-      setLoading(false);
-    }
-  };
+  const tasks = useMemo(() => data?.tasks || [], [data]);
 
-  useEffect(() => { loadTasks(); }, []);
-
-  const handleDelete = async (id: string) => {
+  const handleDelete = useCallback(async (id: string) => {
     try {
       await tasksApi.delete(id);
-      setTasks((prev) => prev.filter((t) => t.id !== id));
+      mutate();
       toast.success("Task deleted");
     } catch (err: any) {
       toast.error(err.message);
     }
-  };
+  }, [mutate]);
 
-  const handleRerun = async (id: string) => {
+  const handleRerun = useCallback(async (id: string) => {
     try {
       await tasksApi.execute(id);
       toast.success("Task re-running!");
-      loadTasks();
+      mutate();
     } catch (err: any) {
       toast.error(err.message);
     }
-  };
+  }, [mutate]);
 
-  const statusVariant = (s: string) => {
+  const statusVariant = useCallback((s: string) => {
     if (s === "COMPLETED") return "success";
     if (s === "FAILED") return "destructive";
     if (s === "RUNNING") return "warning";
     return "secondary";
-  };
+  }, []);
 
   return (
     <AppLayout>
@@ -70,7 +62,7 @@ export default function HistoryPage() {
           </div>
         </div>
 
-        {loading ? (
+        {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-violet-500" />
           </div>
@@ -83,7 +75,7 @@ export default function HistoryPage() {
           </Card>
         ) : (
           <div className="space-y-3">
-            {tasks.map((task) => (
+            {tasks.map((task: any) => (
               <Card key={task.id} className="border-border/50 transition-all hover:shadow-md">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">

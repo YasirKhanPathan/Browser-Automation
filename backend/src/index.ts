@@ -3,7 +3,9 @@ dotenv.config();
 
 import express from "express";
 import cors from "cors";
+import compression from "compression";
 import path from "path";
+import fs from "fs";
 import { PrismaClient } from "@prisma/client";
 import authRoutes from "./routes/auth";
 import taskRoutes from "./routes/tasks";
@@ -21,9 +23,10 @@ export const prisma = new PrismaClient();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+app.use(compression());
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
-app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads"), { maxAge: "1d", immutable: true }));
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
@@ -40,9 +43,23 @@ app.use("/api/schedules", scheduleRoutes);
 app.use("/api/webhooks", webhookRoutes);
 app.use("/api/public", publicRoutes);
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Backend running on port ${PORT}`);
   startScheduler().catch(console.error);
 });
+
+// Graceful shutdown
+const shutdown = async () => {
+  console.log("\n[Shutdown] Cleaning up...");
+  server.close();
+  try {
+    const { closeBrowser } = await import("./services/scraper");
+    await closeBrowser();
+  } catch {}
+  await prisma.$disconnect();
+  process.exit(0);
+};
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
 
 export default app;

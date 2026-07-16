@@ -1,15 +1,7 @@
-import { chromium, Browser, BrowserContext, Page } from "playwright";
+import { BrowserContext, Page } from "playwright";
+import { getBrowser } from "./browser";
 
-let browser: Browser | null = null;
-
-async function getBrowser(): Promise<Browser> {
-  if (!browser || !browser.isConnected()) {
-    browser = await chromium.launch({
-      headless: process.env.HEADLESS !== "false",
-    });
-  }
-  return browser;
-}
+export { closeBrowser } from "./browser";
 
 export async function scrapePage(url: string, selectors: any) {
   const b = await getBrowser();
@@ -191,9 +183,4 @@ export async function captureScreenshot(
   }
 }
 
-export async function closeBrowser() {
-  if (browser) {
-    await browser.close();
-    browser = null;
-  }
-}
+

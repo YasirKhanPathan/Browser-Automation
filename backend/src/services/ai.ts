@@ -2,10 +2,16 @@ const LLM_API_URL = process.env.LLM_API_URL || "http://localhost:19999/v1/chat/c
 const LLM_MODEL = process.env.LLM_MODEL || "xiaomimimo/mimo-v2.5";
 const LLM_API_KEY = process.env.LLM_API_KEY || "";
 
+import { getCachedLLMResponse, setCachedLLMResponse } from "./llm-cache";
+
 export async function callLLM(prompt: string, retries = 2): Promise<string> {
   if (!LLM_API_KEY) {
     throw new Error("LLM API key not configured. Set LLM_API_KEY in backend/.env");
   }
+
+  // Check cache first
+  const cached = getCachedLLMResponse(prompt);
+  if (cached !== null) return cached;
 
   let lastError: any;
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -43,7 +49,10 @@ export async function callLLM(prompt: string, retries = 2): Promise<string> {
       const finish = data.choices?.[0]?.finish_reason;
       console.log(`[LLM] Response length: ${content.length}, finish: ${finish}`);
 
-      if (content && content.trim().length > 0) return content;
+      if (content && content.trim().length > 0) {
+        setCachedLLMResponse(prompt, content);
+        return content;
+      }
 
       // Empty response — retry
       console.log(`[LLM] Empty response, retrying...`);
@@ -65,18 +74,32 @@ export async function callLLM(prompt: string, retries = 2): Promise<string> {
 
 export function parseJSON(text: string): any {
   // Try to find JSON in the response (handles markdown code blocks too)
-  // Match JSON arrays first, then objects
-  const jsonMatch = text.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/)
-    || text.match(/(\[[\s\S]*\])/)
-    || text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/)
-    || text.match(/(\{[\s\S]*\})/);
+  // Use non-greedy patterns to avoid capturing surrounding text
+  const codeBlockArray = text.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
+  const codeBlockObject = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+  const rawArray = text.match(/(\[[\s\S]*?\])/);
+  const rawObject = text.match(/(\{[\s\S]*?\})/);
+  const jsonMatch = codeBlockArray || codeBlockObject || rawArray || rawObject;
+
   if (!jsonMatch) {
-    console.log(`[parseJSON] No JSON found in text:`, text.substring(0, 200));
+    console.log(`[parseJSON] No JSON found in text:`, text.substring(0, 300));
     throw new Error("No JSON found in AI response");
   }
   const jsonStr = jsonMatch[1] || jsonMatch[0];
-  console.log(`[parseJSON] Extracted JSON (first 200 chars):`, jsonStr.substring(0, 200));
-  return JSON.parse(jsonStr);
+  try {
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    // If the non-greedy match didn't work, try greedy as fallback for code blocks
+    const greedyArray = text.match(/```(?:json)?\s*(\[[\s\S]*\])\s*```/);
+    const greedyObject = text.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/);
+    const greedy = greedyArray || greedyObject;
+    if (greedy) {
+      const greedyStr = greedy[1] || greedy[0];
+      return JSON.parse(greedyStr);
+    }
+    console.log(`[parseJSON] JSON parse failed:`, e);
+    throw new Error("Invalid JSON in AI response");
+  }
 }
 
 function extractUrlFromText(text: string): string {

@@ -16,16 +16,36 @@ router.get("/", authMiddleware, async (req: Request, res: Response) => {
   try {
     const authReq = req as AuthRequest;
     const { type, status } = req.query;
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize as string) || 50));
+    const skip = (page - 1) * pageSize;
+
     const where: any = { userId: authReq.userId };
     if (type) where.type = type;
     if (status) where.status = status;
 
-    const tasks = await prisma.task.findMany({
-      where,
-      include: { results: true, screenshots: true },
-      orderBy: { createdAt: "desc" },
-    });
-    res.json({ tasks });
+    const [tasks, total] = await Promise.all([
+      prisma.task.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          description: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          _count: { select: { results: true, screenshots: true } },
+          results: { orderBy: { createdAt: "desc" }, take: 1, select: { status: true, duration: true, createdAt: true } },
+          screenshots: { orderBy: { createdAt: "desc" }, take: 1, select: { filename: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: pageSize,
+      }),
+      prisma.task.count({ where }),
+    ]);
+    res.json({ tasks, total, page, pageSize });
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch tasks" });
   }
@@ -36,7 +56,10 @@ router.get("/:id", authMiddleware, async (req: Request, res: Response) => {
     const authReq = req as AuthRequest;
     const task = await prisma.task.findFirst({
       where: { id: req.params.id, userId: authReq.userId },
-      include: { results: true, screenshots: true },
+      include: {
+        results: { orderBy: { createdAt: "desc" }, take: 10 },
+        screenshots: { orderBy: { createdAt: "desc" }, take: 10 },
+      },
     });
     if (!task) return res.status(404).json({ error: "Task not found" });
     res.json(task);
@@ -86,19 +109,20 @@ router.post("/:id/execute", authMiddleware, async (req: Request, res: Response) 
       const result = await runTask(task);
       const duration = Date.now() - startTime;
 
-      await prisma.taskResult.create({
-        data: {
-          taskId: task.id,
-          status: "SUCCESS",
-          data: result,
-          duration,
-        },
-      });
-
-      await prisma.task.update({
-        where: { id: task.id },
-        data: { status: "COMPLETED" },
-      });
+      await prisma.$transaction([
+        prisma.taskResult.create({
+          data: {
+            taskId: task.id,
+            status: "SUCCESS",
+            data: result,
+            duration,
+          },
+        }),
+        prisma.task.update({
+          where: { id: task.id },
+          data: { status: "COMPLETED" },
+        }),
+      ]);
 
       try {
         const { fireWebhooksForTask } = await import("../services/webhook");
@@ -108,18 +132,19 @@ router.post("/:id/execute", authMiddleware, async (req: Request, res: Response) 
       res.json({ status: "COMPLETED", duration, data: result });
     } catch (err: any) {
       console.error(`[Execute] Task ${task.id} (${task.type}) failed:`, err.message);
-      await prisma.taskResult.create({
-        data: {
-          taskId: task.id,
-          status: "ERROR",
-          errorMsg: err.message,
-        },
-      });
-
-      await prisma.task.update({
-        where: { id: task.id },
-        data: { status: "FAILED" },
-      });
+      await prisma.$transaction([
+        prisma.taskResult.create({
+          data: {
+            taskId: task.id,
+            status: "ERROR",
+            errorMsg: err.message,
+          },
+        }),
+        prisma.task.update({
+          where: { id: task.id },
+          data: { status: "FAILED" },
+        }),
+      ]);
 
       res.status(500).json({ error: err.message });
     }

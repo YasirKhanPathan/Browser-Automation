@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../index";
 import crypto from "crypto";
+import { authMiddleware, AuthRequest } from "../middleware/auth";
 
 const router = Router();
 
@@ -72,11 +73,12 @@ router.get("/tasks", async (req: Request, res: Response) => {
   }
 });
 
-// Generate API key for a task
-router.post("/generate-key/:taskId", async (req: Request, res: Response) => {
+// Generate API key for a task (requires auth)
+router.post("/generate-key/:taskId", authMiddleware, async (req: Request, res: Response) => {
   try {
+    const authReq = req as AuthRequest;
     const { taskId } = req.params;
-    const task = await prisma.task.findUnique({ where: { id: taskId } });
+    const task = await prisma.task.findFirst({ where: { id: taskId, userId: authReq.userId } });
     if (!task) return res.status(404).json({ error: "Task not found" });
 
     const apiKey = `bk_${crypto.randomBytes(24).toString("hex")}`;

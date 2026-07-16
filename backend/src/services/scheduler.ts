@@ -47,7 +47,7 @@ export async function startScheduler() {
 
   const schedules = await prisma.schedule.findMany({
     where: { enabled: true },
-    include: { task: true },
+    include: { task: { select: { id: true, name: true, type: true } } },
   });
 
   for (const schedule of schedules) {
@@ -87,29 +87,33 @@ export async function executeSchedule(scheduleId: string) {
     const result = await runTask(schedule.task);
     const duration = Date.now() - startTime;
 
-    // Store result
-    await prisma.taskResult.create({
-      data: {
-        taskId: schedule.taskId,
-        status: "SUCCESS",
-        data: result,
-        duration,
-      },
-    });
-
-    // Update schedule
+    // Store result and update schedule atomically
     const now = new Date();
-    await prisma.schedule.update({
-      where: { id: scheduleId },
-      data: { lastRun: now },
-    });
+    await prisma.$transaction([
+      prisma.taskResult.create({
+        data: {
+          taskId: schedule.taskId,
+          status: "SUCCESS",
+          data: result,
+          duration,
+        },
+      }),
+      prisma.schedule.update({
+        where: { id: scheduleId },
+        data: { lastRun: now },
+      }),
+    ]);
 
     // Check for changes and send notification
     if (schedule.notifyEmail && previousResult?.data) {
       const changes = compareResults(previousResult.data, result);
       if (changes.length > 0) {
         const html = buildChangeNotification(schedule.task.name, changes);
-        await sendEmail(schedule.notifyEmail, `Data Changed: ${schedule.task.name}`, html);
+        try {
+          await sendEmail(schedule.notifyEmail, `Data Changed: ${schedule.task.name}`, html);
+        } catch (emailErr: any) {
+          console.error(`[Scheduler] Email notification failed:`, emailErr.message);
+        }
       }
     }
 
@@ -177,6 +181,11 @@ export async function toggleSchedule(scheduleId: string, enabled: boolean) {
   });
 
   if (enabled) {
+    // Stop existing job if any before creating new one
+    const existingJob = scheduledTasks.get(scheduleId);
+    if (existingJob) {
+      existingJob.stop();
+    }
     if (cron.validate(schedule.cronExpr)) {
       const job = cron.schedule(schedule.cronExpr, async () => {
         await executeSchedule(schedule.id);

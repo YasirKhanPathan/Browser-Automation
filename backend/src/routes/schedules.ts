@@ -75,7 +75,7 @@ router.post("/:id/test-email", authMiddleware, async (req: Request, res: Respons
       where: { id: req.params.id, userId: authReq.userId },
     });
     if (!schedule) return res.status(404).json({ error: "Schedule not found" });
-    if (!schedule.notifyEmail) return res.status(400).json({ error: "No email configured" });
+    if (!schedule.notifyEmail) return res.status(400).json({ error: "No notification email configured on this schedule" });
 
     const sent = await sendEmail(
       schedule.notifyEmail,
@@ -83,8 +83,12 @@ router.post("/:id/test-email", authMiddleware, async (req: Request, res: Respons
       `<h2>Test Email</h2><p>This is a test email from BrowserBot Scheduler.</p><p>If you received this, email notifications are working.</p>`
     );
 
-    res.json({ sent });
+    res.json({ sent, message: "Test email sent successfully" });
   } catch (error: any) {
+    // Distinguish between SMTP config issues and other errors
+    if (error.message?.includes("SMTP not configured")) {
+      return res.status(500).json({ error: "SMTP email server is not configured. Please set SMTP_USER and SMTP_PASS in the server .env file." });
+    }
     res.status(500).json({ error: error.message });
   }
 });

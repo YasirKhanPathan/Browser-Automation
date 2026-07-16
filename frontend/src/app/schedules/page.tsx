@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Clock, Loader2, AlertCircle, Plus, Trash2, Mail, Play, Pause } from "lucide-react";
-import { useState, useEffect } from "react";
-import { schedulesApi, tasksApi } from "@/services/api";
+import { useState, useCallback, useMemo } from "react";
+import useSWR from "swr";
+import { schedulesApi, tasksApi, authFetcher } from "@/services/api";
 import toast from "react-hot-toast";
 
 interface Schedule {
@@ -23,33 +24,24 @@ interface Schedule {
 }
 
 export default function SchedulesPage() {
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: schedData, isLoading: schedLoading, mutate: mutateSchedules } = useSWR("/api/schedules", authFetcher, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+  });
+  const { data: taskData } = useSWR("/api/tasks", authFetcher, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+  });
+
+  const schedules = useMemo(() => (schedData?.schedules || []) as Schedule[], [schedData]);
+  const tasks = useMemo(() => (taskData?.tasks || []).filter((t: any) => t.status === "COMPLETED"), [taskData]);
+  const loading = schedLoading;
+
   const [showCreate, setShowCreate] = useState(false);
   const [selectedTask, setSelectedTask] = useState("");
   const [cronExpr, setCronExpr] = useState("0 */6 * * *");
   const [email, setEmail] = useState("");
   const [creating, setCreating] = useState(false);
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-    try {
-      const [schedData, taskData] = await Promise.all([
-        schedulesApi.list(),
-        tasksApi.list(),
-      ]);
-      setSchedules(schedData.schedules || []);
-      setTasks((taskData.tasks || []).filter((t: any) => t.status === "COMPLETED"));
-    } catch (err: any) {
-      toast.error("Failed to load data");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleCreate = async () => {
     if (!selectedTask) return toast.error("Select a task");
@@ -65,7 +57,7 @@ export default function SchedulesPage() {
       setShowCreate(false);
       setSelectedTask("");
       setEmail("");
-      loadData();
+      mutateSchedules();
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -77,7 +69,7 @@ export default function SchedulesPage() {
     try {
       await schedulesApi.toggle(id, enabled);
       toast.success(enabled ? "Schedule enabled" : "Schedule disabled");
-      loadData();
+      mutateSchedules();
     } catch (err: any) {
       toast.error(err.message);
     }
@@ -87,7 +79,7 @@ export default function SchedulesPage() {
     try {
       await schedulesApi.delete(id);
       toast.success("Schedule deleted");
-      loadData();
+      mutateSchedules();
     } catch (err: any) {
       toast.error(err.message);
     }
@@ -96,9 +88,9 @@ export default function SchedulesPage() {
   const handleTestEmail = async (id: string) => {
     try {
       const result = await schedulesApi.testEmail(id);
-      toast.success(result.sent ? "Test email sent!" : "Email not configured");
+      toast.success(result.message || "Test email sent!");
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(err.message || "Failed to send test email");
     }
   };
 

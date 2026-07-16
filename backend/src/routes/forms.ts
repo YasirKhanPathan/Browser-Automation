@@ -46,13 +46,15 @@ router.post("/execute", authMiddleware, async (req: Request, res: Response) => {
     const result = await fillForm(url, fields);
 
     if (taskId && taskId !== "manual") {
-      await prisma.taskResult.create({
-        data: { taskId, status: "SUCCESS", data: result },
-      });
-      await prisma.task.update({
-        where: { id: taskId },
-        data: { status: "COMPLETED" },
-      });
+      await prisma.$transaction([
+        prisma.taskResult.create({
+          data: { taskId, status: "SUCCESS", data: result },
+        }),
+        prisma.task.update({
+          where: { id: taskId },
+          data: { status: "COMPLETED" },
+        }),
+      ]);
     }
 
     res.json({ ...result, taskId });

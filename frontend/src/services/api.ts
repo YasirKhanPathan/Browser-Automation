@@ -5,6 +5,24 @@ function getAuthToken(): string | null {
   return localStorage.getItem("token");
 }
 
+// SWR fetcher with auth
+export async function authFetcher(url: string) {
+  const token = getAuthToken();
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (res.status === 401) {
+    localStorage.removeItem("token");
+    window.location.href = "/login";
+    throw new Error("Session expired");
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 async function apiFetch(path: string, options?: RequestInit) {
   const token = getAuthToken();
   const headers: Record<string, string> = {
@@ -52,8 +70,8 @@ export const scrapeApi = {
     apiFetch("/api/scrape/analyze", { method: "POST", body: JSON.stringify({ url }) }),
   execute: (taskId: string, url: string, selectors: any) =>
     apiFetch("/api/scrape/execute", { method: "POST", body: JSON.stringify({ taskId, url, selectors }) }),
-  smart: (url: string, description: string) =>
-    apiFetch("/api/scrape/smart", { method: "POST", body: JSON.stringify({ url, description }) }),
+  smart: (url: string, description: string, engine?: "auto" | "lightweight" | "playwright") =>
+    apiFetch("/api/scrape/smart", { method: "POST", body: JSON.stringify({ url, description, engine }) }),
   crawl: (url: string, options: { description?: string; maxPages?: number; strategy?: string; nextSelector?: string }) =>
     apiFetch("/api/scrape/crawl", { method: "POST", body: JSON.stringify({ url, ...options }) }),
 };
