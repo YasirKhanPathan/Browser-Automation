@@ -31,6 +31,10 @@ export const scrapeApi = {
     apiFetch("/api/scrape/analyze", { method: "POST", body: JSON.stringify({ url }) }),
   execute: (taskId: string, url: string, selectors: any) =>
     apiFetch("/api/scrape/execute", { method: "POST", body: JSON.stringify({ taskId, url, selectors }) }),
+  smart: (url: string, description: string) =>
+    apiFetch("/api/scrape/smart", { method: "POST", body: JSON.stringify({ url, description }) }),
+  crawl: (url: string, options: { description?: string; maxPages?: number; strategy?: string; nextSelector?: string }) =>
+    apiFetch("/api/scrape/crawl", { method: "POST", body: JSON.stringify({ url, ...options }) }),
 };
 
 export const formsApi = {
@@ -51,4 +55,53 @@ export const aiApi = {
     apiFetch("/api/ai/plan", { method: "POST", body: JSON.stringify({ description }) }),
   analyzePage: (url: string) =>
     apiFetch("/api/ai/analyze-page", { method: "POST", body: JSON.stringify({ url }) }),
+};
+
+export const schedulesApi = {
+  list: () => apiFetch("/api/schedules"),
+  create: (data: { taskId: string; cronExpr: string; notifyEmail?: string }) =>
+    apiFetch("/api/schedules", { method: "POST", body: JSON.stringify(data) }),
+  toggle: (id: string, enabled: boolean) =>
+    apiFetch(`/api/schedules/${id}`, { method: "PATCH", body: JSON.stringify({ enabled }) }),
+  delete: (id: string) =>
+    apiFetch(`/api/schedules/${id}`, { method: "DELETE" }),
+  testEmail: (id: string) =>
+    apiFetch(`/api/schedules/${id}/test-email`, { method: "POST" }),
+};
+
+export const webhooksApi = {
+  list: (taskId?: string) => {
+    const qs = taskId ? `?taskId=${taskId}` : "";
+    return apiFetch(`/api/webhooks${qs}`);
+  },
+  create: (data: { taskId: string; url: string; secret?: string; events?: string[] }) =>
+    apiFetch("/api/webhooks", { method: "POST", body: JSON.stringify(data) }),
+  toggle: (id: string, enabled: boolean) =>
+    apiFetch(`/api/webhooks/${id}`, { method: "PATCH", body: JSON.stringify({ enabled }) }),
+  delete: (id: string) =>
+    apiFetch(`/api/webhooks/${id}`, { method: "DELETE" }),
+  test: (id: string) =>
+    apiFetch(`/api/webhooks/${id}/test`, { method: "POST" }),
+};
+
+export const publicApi = {
+  generateKey: (taskId: string) =>
+    apiFetch(`/api/public/generate-key/${taskId}`, { method: "POST" }),
+};
+
+export const exportApi = {
+  download: (taskId: string, format: "csv" | "json") => {
+    window.open(`/api/tasks/${taskId}/export?format=${format}`, "_blank");
+  },
+  copyJson: async (taskId: string) => {
+    const res = await fetch(`/api/tasks/${taskId}/export?format=json`);
+    const data = await res.json();
+    await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+    return data;
+  },
+  toSheets: (taskId: string, spreadsheetId?: string) =>
+    apiFetch(`/api/tasks/${taskId}/export/sheets`, {
+      method: "POST",
+      body: JSON.stringify({ spreadsheetId }),
+    }),
 };

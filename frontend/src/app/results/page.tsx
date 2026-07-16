@@ -5,9 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { BarChart3, Clock, Download, ExternalLink, CheckCircle2, XCircle, Image, Loader2 } from "lucide-react";
+import { BarChart3, Clock, Download, ExternalLink, CheckCircle2, XCircle, Image, Loader2, Copy } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
 import toast from "react-hot-toast";
+import { exportApi } from "@/services/api";
 
 export default function ResultsPage() {
   const [tasks, setTasks] = useState<any[]>([]);
@@ -252,7 +253,18 @@ export default function ResultsPage() {
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between">
                       <span className="truncate">{selected.name}</span>
-                      <Badge variant="success">Completed</Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="success">Completed</Badge>
+                        <Button size="sm" variant="outline" onClick={() => { exportApi.download(selected.id, "csv"); toast.success("Downloading CSV..."); }}>
+                          <Download className="h-3 w-3 mr-1" /> CSV
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => { exportApi.download(selected.id, "json"); toast.success("Downloading JSON..."); }}>
+                          <Download className="h-3 w-3 mr-1" /> JSON
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={async () => { await exportApi.copyJson(selected.id); toast.success("Copied to clipboard!"); }}>
+                          <Copy className="h-3 w-3 mr-1" /> Copy
+                        </Button>
+                      </div>
                     </CardTitle>
                   </CardHeader>
                   <CardContent>

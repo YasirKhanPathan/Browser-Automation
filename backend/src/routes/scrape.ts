@@ -1,6 +1,8 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../index";
 import { scrapePage, scrapePageDirect } from "../services/scraper";
+import { smartScrape } from "../services/ai-extractor";
+import { crawlPages, CrawlOptions } from "../services/crawler";
 
 const router = Router();
 
@@ -68,6 +70,117 @@ router.post("/execute", async (req: Request, res: Response) => {
     }
 
     res.json({ data, count: Array.isArray(data) ? data.length : 0 });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/smart", async (req: Request, res: Response) => {
+  try {
+    const { url, description } = req.body;
+    if (!url) return res.status(400).json({ error: "URL is required" });
+    if (!description) return res.status(400).json({ error: "Description is required for smart scrape" });
+
+    const hostname = new URL(url).hostname;
+
+    const task = await prisma.task.create({
+      data: {
+        name: `Smart Scrape: ${hostname}`,
+        type: "SCRAPE",
+        description: `Smart scrape: ${description}`,
+        config: { url, description, smart: true },
+      },
+    });
+
+    await prisma.task.update({
+      where: { id: task.id },
+      data: { status: "RUNNING" },
+    });
+
+    const startTime = Date.now();
+    try {
+      const result = await smartScrape(url, description);
+      const duration = Date.now() - startTime;
+
+      await prisma.taskResult.create({
+        data: { taskId: task.id, status: "SUCCESS", data: result.structured, duration },
+      });
+
+      await prisma.task.update({
+        where: { id: task.id },
+        data: { status: "COMPLETED" },
+      });
+
+      res.json({ taskId: task.id, data: result.structured, count: Array.isArray(result.structured) ? result.structured.length : 0 });
+    } catch (err: any) {
+      const duration = Date.now() - startTime;
+      await prisma.taskResult.create({
+        data: { taskId: task.id, status: "ERROR", errorMsg: err.message, duration },
+      });
+      await prisma.task.update({
+        where: { id: task.id },
+        data: { status: "FAILED" },
+      });
+      throw err;
+    }
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/crawl", async (req: Request, res: Response) => {
+  try {
+    const { url, description, maxPages = 5, strategy = "ai", nextSelector } = req.body;
+    if (!url) return res.status(400).json({ error: "URL is required" });
+
+    const hostname = new URL(url).hostname;
+
+    const task = await prisma.task.create({
+      data: {
+        name: `Crawl: ${hostname} (${maxPages} pages)`,
+        type: "SCRAPE",
+        description: `Multi-page crawl: ${description || url}`,
+        config: { url, description, maxPages, strategy, nextSelector, crawl: true },
+      },
+    });
+
+    await prisma.task.update({
+      where: { id: task.id },
+      data: { status: "RUNNING" },
+    });
+
+    const startTime = Date.now();
+    try {
+      const options: CrawlOptions = { maxPages, strategy: strategy as any, nextSelector, description };
+      const result = await crawlPages(url, options);
+      const duration = Date.now() - startTime;
+
+      await prisma.taskResult.create({
+        data: { taskId: task.id, status: "SUCCESS", data: result.aggregated, duration },
+      });
+
+      await prisma.task.update({
+        where: { id: task.id },
+        data: { status: "COMPLETED" },
+      });
+
+      res.json({
+        taskId: task.id,
+        pages: result.pages.length,
+        aggregatedCount: result.aggregated.length,
+        errors: result.errors,
+      });
+    } catch (err: any) {
+      const duration = Date.now() - startTime;
+      await prisma.taskResult.create({
+        data: { taskId: task.id, status: "ERROR", errorMsg: err.message, duration },
+      });
+      await prisma.task.update({
+        where: { id: task.id },
+        data: { status: "FAILED" },
+      });
+      throw err;
+    }
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

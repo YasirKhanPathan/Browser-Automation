@@ -33,10 +33,13 @@ model Task {
   description String
   config      Json?
   status      TaskStatus   @default(PENDING)
+  apiKey      String?      @unique
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   results     TaskResult[]
   screenshots Screenshot[]
+  schedules   Schedule[]
+  webhooks    Webhook[]
 }
 
 model TaskResult {
@@ -57,5 +60,29 @@ model Screenshot {
   filename  String
   filepath  String
   pageUrl   String
+  createdAt DateTime @default(now())
+}
+
+model Schedule {
+  id          String   @id @default(uuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  cronExpr    String
+  enabled     Boolean  @default(true)
+  lastRun     DateTime?
+  nextRun     DateTime?
+  notifyEmail String?
+  createdAt   DateTime @default(now())
+}
+
+model Webhook {
+  id        String   @id @default(uuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  url       String
+  secret    String?
+  events    String[]
+  enabled   Boolean  @default(true)
+  lastFired DateTime?
   createdAt DateTime @default(now())
 }

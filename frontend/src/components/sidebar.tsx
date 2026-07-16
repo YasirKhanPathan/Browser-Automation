@@ -6,8 +6,11 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   Globe,
+  Layers,
   FormInput,
   Camera,
+  Clock,
+  Webhook,
   History,
   BarChart3,
   Bot,
@@ -17,8 +20,11 @@ import {
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/scrape", label: "AI Scraper", icon: Globe },
+  { href: "/crawl", label: "Multi-Page Crawl", icon: Layers },
   { href: "/forms", label: "Form Fill", icon: FormInput },
   { href: "/screenshots", label: "Screenshots", icon: Camera },
+  { href: "/schedules", label: "Schedules", icon: Clock },
+  { href: "/webhooks", label: "Webhooks & API", icon: Webhook },
   { href: "/results", label: "Results", icon: BarChart3 },
   { href: "/history", label: "History", icon: History },
 ];

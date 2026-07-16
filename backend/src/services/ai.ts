@@ -2,7 +2,7 @@ const LLM_API_URL = process.env.LLM_API_URL || "http://localhost:19999/v1/chat/c
 const LLM_MODEL = process.env.LLM_MODEL || "xiaomimimo/mimo-v2.5";
 const LLM_API_KEY = process.env.LLM_API_KEY || "";
 
-async function callLLM(prompt: string, retries = 2): Promise<string> {
+export async function callLLM(prompt: string, retries = 2): Promise<string> {
   if (!LLM_API_KEY) {
     throw new Error("LLM API key not configured. Set LLM_API_KEY in backend/.env");
   }
@@ -63,7 +63,7 @@ async function callLLM(prompt: string, retries = 2): Promise<string> {
   throw lastError || new Error("LLM failed after all retries");
 }
 
-function parseJSON(text: string): any {
+export function parseJSON(text: string): any {
   // Try to find JSON in the response (handles markdown code blocks too)
   const jsonMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/) || text.match(/(\{[\s\S]*\})/);
   if (!jsonMatch) throw new Error("No JSON found in AI response");

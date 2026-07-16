@@ -5,16 +5,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Globe, Loader2, AlertCircle } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Globe, Loader2, AlertCircle, Sparkles, Download } from "lucide-react";
 import { useState } from "react";
 import { tasksApi, scrapeApi } from "@/services/api";
 import toast from "react-hot-toast";
 
 export default function ScrapePage() {
   const [url, setUrl] = useState("");
+  const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<"basic" | "smart">("basic");
 
   const handleScrape = async () => {
     if (!url) return toast.error("Please enter a URL");
@@ -23,31 +27,68 @@ export default function ScrapePage() {
     setLoading(true);
     setError(null);
     try {
-      // Create task first so results are saved
-      const hostname = new URL(targetUrl).hostname;
-      const task = await tasksApi.create({
-        name: `Scrape: ${hostname}`,
-        type: "SCRAPE",
-        description: `Scrape data from ${targetUrl}`,
-        config: {
-          url: targetUrl,
-          selectors: { container: "body", fields: { text: "h1, h2, h3, p, a, li, td, th" } },
-        },
-      });
+      if (mode === "smart" && description.trim()) {
+        const data = await scrapeApi.smart(targetUrl, description);
+        setResults(data);
+        toast.success(`Smart scrape complete — found ${data.count || 0} items`);
+      } else {
+        const hostname = new URL(targetUrl).hostname;
+        const task = await tasksApi.create({
+          name: `Scrape: ${hostname}`,
+          type: "SCRAPE",
+          description: `Scrape data from ${targetUrl}`,
+          config: {
+            url: targetUrl,
+            selectors: { container: "body", fields: { text: "h1, h2, h3, p, a, li, td, th" } },
+          },
+        });
 
-      // Execute via the scrape route with the real taskId
-      const data = await scrapeApi.execute(task.id, targetUrl, {
-        container: "body",
-        fields: { text: "h1, h2, h3, p, a, li, td, th" },
-      });
-      setResults(data);
-      toast.success(`Found ${data.count || 0} items — saved to results`);
+        const data = await scrapeApi.execute(task.id, targetUrl, {
+          container: "body",
+          fields: { text: "h1, h2, h3, p, a, li, td, th" },
+        });
+        setResults(data);
+        toast.success(`Found ${data.count || 0} items — saved to results`);
+      }
     } catch (err: any) {
       setError(err.message);
       toast.error(err.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleExportCSV = () => {
+    if (!results?.data?.length) return;
+    const keys = Object.keys(results.data[0]);
+    const csv = [
+      keys.join(","),
+      ...results.data.map((row: any) =>
+        keys.map((k) => `"${String(row[k] ?? "").replace(/"/g, '""')}"`).join(",")
+      ),
+    ].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `scrape-${new URL(url).hostname}-${Date.now()}.csv`;
+    a.click();
+    toast.success("CSV downloaded!");
+  };
+
+  const handleExportJSON = () => {
+    if (!results?.data?.length) return;
+    const blob = new Blob([JSON.stringify(results.data, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `scrape-${new URL(url).hostname}-${Date.now()}.json`;
+    a.click();
+    toast.success("JSON downloaded!");
+  };
+
+  const handleCopyJSON = () => {
+    if (!results?.data?.length) return;
+    navigator.clipboard.writeText(JSON.stringify(results.data, null, 2));
+    toast.success("Copied to clipboard!");
   };
 
   return (
@@ -61,12 +102,29 @@ export default function ScrapePage() {
             Web Scraper
           </h1>
           <p className="text-muted-foreground mt-1">
-            Enter a URL to extract all visible content from any website
+            Extract data from any website — basic or AI-powered smart extraction
           </p>
         </div>
 
         <Card className="border-border/50">
           <CardContent className="p-6 space-y-4">
+            <div className="flex gap-2 mb-2">
+              <Button
+                variant={mode === "basic" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setMode("basic")}
+              >
+                <Globe className="mr-1 h-3 w-3" /> Basic
+              </Button>
+              <Button
+                variant={mode === "smart" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setMode("smart")}
+              >
+                <Sparkles className="mr-1 h-3 w-3" /> Smart
+              </Button>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="url">Website URL</Label>
               <Input
@@ -74,12 +132,46 @@ export default function ScrapePage() {
                 placeholder="https://example.com"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleScrape()}
+                onKeyDown={(e) => e.key === "Enter" && !loading && handleScrape()}
               />
             </div>
-            <Button onClick={handleScrape} disabled={loading || !url} variant="gradient" size="lg">
-              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Globe className="mr-2 h-4 w-4" />}
-              {loading ? "Scraping..." : "Scrape Data"}
+
+            {mode === "smart" && (
+              <div className="space-y-2 animate-fade-in">
+                <Label htmlFor="desc">What data do you want?</Label>
+                <Textarea
+                  id="desc"
+                  placeholder='e.g., "Get all product names and prices" or "Extract article titles and summaries"'
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={3}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Describe the data you want extracted — AI will structure the output accordingly
+                </p>
+              </div>
+            )}
+
+            <Button
+              onClick={handleScrape}
+              disabled={loading || !url || (mode === "smart" && !description.trim())}
+              variant="gradient"
+              size="lg"
+            >
+              {loading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : mode === "smart" ? (
+                <Sparkles className="mr-2 h-4 w-4" />
+              ) : (
+                <Globe className="mr-2 h-4 w-4" />
+              )}
+              {loading
+                ? mode === "smart"
+                  ? "AI Extracting..."
+                  : "Scraping..."
+                : mode === "smart"
+                  ? "Smart Scrape"
+                  : "Scrape Data"}
             </Button>
           </CardContent>
         </Card>
@@ -97,10 +189,28 @@ export default function ScrapePage() {
           <Card className="border-border/50 animate-fade-in">
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
-                <span>Scraped Data</span>
-                <span className="text-sm font-normal text-muted-foreground">
-                  {results.count || 0} items
-                </span>
+                <div className="flex items-center gap-2">
+                  <span>Scraped Data</span>
+                  {mode === "smart" && <Badge variant="default"><Sparkles className="h-3 w-3 mr-1" />AI</Badge>}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-normal text-muted-foreground">
+                    {results.count || 0} items
+                  </span>
+                  {results.data?.length > 0 && (
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="outline" onClick={handleExportCSV}>
+                        <Download className="h-3 w-3 mr-1" /> CSV
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={handleExportJSON}>
+                        <Download className="h-3 w-3 mr-1" /> JSON
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={handleCopyJSON}>
+                        Copy
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </CardTitle>
             </CardHeader>
             <CardContent>

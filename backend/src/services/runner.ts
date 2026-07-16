@@ -1,5 +1,8 @@
 import { prisma } from "../index";
 import { scrapePage, scrapePageDirect, fillForm, captureScreenshot } from "./scraper";
+import { smartScrape } from "./ai-extractor";
+import { crawlPages, CrawlOptions } from "./crawler";
+import { fireWebhooksForTask } from "./webhook";
 import path from "path";
 import fs from "fs";
 
@@ -26,6 +29,24 @@ export async function runTask(task: any) {
     case "SCRAPE": {
       const url = extractUrl(config);
       if (!url) throw new Error("No URL configured for scrape task");
+
+      // Smart mode: use AI extraction if description is provided
+      if (config?.smart && config?.description) {
+        const result = await smartScrape(url, config.description);
+        return result.structured;
+      }
+
+      // Crawl mode: multi-page scraping
+      if (config?.crawl) {
+        const options: CrawlOptions = {
+          maxPages: config.maxPages || 5,
+          strategy: config.strategy || "ai",
+          nextSelector: config.nextSelector,
+          description: config.description,
+        };
+        const result = await crawlPages(url, options);
+        return result.aggregated;
+      }
 
       const selectors = config?.selectors;
       if (selectors && selectors.container !== "body") {

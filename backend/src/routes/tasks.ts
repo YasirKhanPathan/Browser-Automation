@@ -92,6 +92,12 @@ router.post("/:id/execute", async (req: Request, res: Response) => {
         data: { status: "COMPLETED" },
       });
 
+      // Fire webhooks
+      try {
+        const { fireWebhooksForTask } = await import("../services/webhook");
+        await fireWebhooksForTask(task.id, "completed", result);
+      } catch {}
+
       res.json({ status: "COMPLETED", duration, data: result });
     } catch (err: any) {
       console.error(`[Execute] Task ${task.id} (${task.type}) failed:`, err.message);
