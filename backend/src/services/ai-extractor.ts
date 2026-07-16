@@ -2,27 +2,56 @@ import { callLLM, parseJSON } from "./ai";
 import { scrapePageDirect } from "./scraper";
 
 export async function extractStructuredData(rawContent: any[], userDescription: string): Promise<any> {
-  // Truncate content if too large (keep under ~6000 chars for the prompt)
+  // Truncate content aggressively — large prompts cause the model to return empty responses
   const contentStr = JSON.stringify(rawContent, null, 2);
-  const truncated = contentStr.length > 6000 ? contentStr.slice(0, 6000) + "\n...(truncated)" : contentStr;
 
-  const prompt = `You are a data extraction assistant. Given the raw webpage content below and the user's extraction request, extract and return structured JSON data.
+  // Try with progressively smaller prompts until we get a response
+  const truncationLimits = [3000, 1500, 500];
 
-USER REQUEST: "${userDescription}"
+  for (const limit of truncationLimits) {
+    const truncated = contentStr.length > limit ? contentStr.slice(0, limit) + "\n...(truncated)" : contentStr;
 
-RAW WEBPAGE CONTENT:
+    const prompt = `Extract data from this webpage content.
+
+REQUEST: "${userDescription}"
+
+CONTENT:
 ${truncated}
 
-Respond with ONLY a JSON object or array. The structure should match what the user asked for.
-Examples:
-- If they asked for "product names and prices", return: [{"name": "...", "price": "..."}]
-- If they asked for "all links", return: [{"text": "...", "url": "..."}]
-- If they asked for "headings and descriptions", return: [{"heading": "...", "description": "..."}]
+Return ONLY a JSON array of objects matching the request. No markdown, no explanation.`;
 
-Return the data as a JSON array of objects. Each object represents one item.`;
+    try {
+      const text = await callLLM(prompt, 2);
+      console.log(`[AI] Raw LLM response (first 200 chars):`, text.substring(0, 200));
+      const parsed = parseJSON(text);
+      console.log(`[AI] Parsed result:`, JSON.stringify(parsed).substring(0, 200));
+      return Array.isArray(parsed) ? parsed : [parsed];
+    } catch (err: any) {
+      console.log(`[AI] Parse error:`, err.message);
+      if (err.message === "LLM returned empty response" && limit > 500) {
+        console.log(`[AI] Empty response with ${limit} char limit, retrying with smaller prompt...`);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  // Final attempt with minimal content
+  const minimalContent = contentStr.slice(0, 500) + "\n...(truncated)";
+  const prompt = `Extract data from this webpage content.
+
+REQUEST: "${userDescription}"
+
+CONTENT:
+${minimalContent}
+
+Return ONLY a JSON array of objects matching the request. No markdown, no explanation.`;
 
   const text = await callLLM(prompt, 2);
-  return parseJSON(text);
+  console.log(`[AI] Final attempt raw response (first 200 chars):`, text.substring(0, 200));
+  const parsed = parseJSON(text);
+  console.log(`[AI] Final attempt parsed:`, JSON.stringify(parsed).substring(0, 200));
+  return Array.isArray(parsed) ? parsed : [parsed];
 }
 
 export async function smartScrape(url: string, description: string): Promise<any> {

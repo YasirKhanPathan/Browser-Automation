@@ -111,9 +111,24 @@ export const publicApi = {
 };
 
 export const exportApi = {
-  download: (taskId: string, format: "csv" | "json") => {
+  download: async (taskId: string, format: "csv" | "json") => {
     const token = getAuthToken();
-    window.open(`/api/tasks/${taskId}/export?format=${format}`, "_blank");
+    const res = await fetch(`/api/tasks/${taskId}/export?format=${format}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `Download failed: HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `export-${taskId}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   },
   copyJson: async (taskId: string) => {
     const token = getAuthToken();

@@ -17,7 +17,7 @@ export async function callLLM(prompt: string, retries = 2): Promise<string> {
         model: LLM_MODEL,
         messages: [{ role: "user", content: prompt }],
         temperature: 0.1,
-        max_tokens: 2048,
+        max_tokens: 4096,
       });
       console.log(`[LLM] Attempt ${attempt + 1}/${retries + 1}, prompt length:`, prompt.length);
 
@@ -65,9 +65,17 @@ export async function callLLM(prompt: string, retries = 2): Promise<string> {
 
 export function parseJSON(text: string): any {
   // Try to find JSON in the response (handles markdown code blocks too)
-  const jsonMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/) || text.match(/(\{[\s\S]*\})/);
-  if (!jsonMatch) throw new Error("No JSON found in AI response");
+  // Match JSON arrays first, then objects
+  const jsonMatch = text.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/)
+    || text.match(/(\[[\s\S]*\])/)
+    || text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/)
+    || text.match(/(\{[\s\S]*\})/);
+  if (!jsonMatch) {
+    console.log(`[parseJSON] No JSON found in text:`, text.substring(0, 200));
+    throw new Error("No JSON found in AI response");
+  }
   const jsonStr = jsonMatch[1] || jsonMatch[0];
+  console.log(`[parseJSON] Extracted JSON (first 200 chars):`, jsonStr.substring(0, 200));
   return JSON.parse(jsonStr);
 }
 

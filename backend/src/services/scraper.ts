@@ -50,47 +50,24 @@ export async function scrapePageDirect(url: string) {
     const data = await page.evaluate(() => {
       const results: Record<string, string>[] = [];
 
+      // Extract ALL text blocks from the page (headings, paragraphs, spans, divs, etc.)
+      document.querySelectorAll("h1, h2, h3, h4, h5, h6, p, span.text, small.author, blockquote, figcaption, cite, td, th, li, dt, dd").forEach((el) => {
+        const text = el.textContent?.trim();
+        if (text && text.length > 5) {
+          results.push({ type: el.tagName.toLowerCase() + (el.className ? '.' + el.className.split(' ')[0] : ''), text });
+        }
+      });
+
       // Extract links
-      const links = document.querySelectorAll("a[href]");
-      if (links.length > 0) {
-        links.forEach((a) => {
-          const text = a.textContent?.trim();
-          if (text && text.length > 1) {
-            results.push({ type: "link", text, href: (a as HTMLAnchorElement).href });
-          }
-        });
-      }
-
-      // Extract headings
-      const headings = document.querySelectorAll("h1, h2, h3, h4, h5, h6");
-      headings.forEach((h) => {
-        const text = h.textContent?.trim();
-        if (text) {
-          results.push({ type: h.tagName.toLowerCase(), text });
-        }
-      });
-
-      // Extract paragraphs
-      const paragraphs = document.querySelectorAll("p");
-      paragraphs.forEach((p) => {
-        const text = p.textContent?.trim();
-        if (text && text.length > 10) {
-          results.push({ type: "paragraph", text });
-        }
-      });
-
-      // Extract list items
-      const listItems = document.querySelectorAll("li");
-      listItems.forEach((li) => {
-        const text = li.textContent?.trim();
-        if (text && text.length > 2) {
-          results.push({ type: "list-item", text });
+      document.querySelectorAll("a[href]").forEach((a) => {
+        const text = a.textContent?.trim();
+        if (text && text.length > 1) {
+          results.push({ type: "link", text, href: (a as HTMLAnchorElement).href });
         }
       });
 
       // Extract table data
-      const tables = document.querySelectorAll("table");
-      tables.forEach((table) => {
+      document.querySelectorAll("table").forEach((table) => {
         const headers = Array.from(table.querySelectorAll("th")).map((th) => th.textContent?.trim() || "");
         const rows = table.querySelectorAll("tbody tr");
         rows.forEach((row) => {
@@ -106,8 +83,7 @@ export async function scrapePageDirect(url: string) {
       });
 
       // Extract images
-      const images = document.querySelectorAll("img[src]");
-      images.forEach((img) => {
+      document.querySelectorAll("img[src]").forEach((img) => {
         const alt = (img as HTMLImageElement).alt || "";
         const src = (img as HTMLImageElement).src;
         if (alt || src) {

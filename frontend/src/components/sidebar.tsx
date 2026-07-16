@@ -112,7 +112,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               </div>
             )}
             <button
-              onClick={logout}
+              onClick={() => { logout(); onClose(); }}
               className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-all duration-200"
             >
               <LogOut className="h-4 w-4" />

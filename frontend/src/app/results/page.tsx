@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { BarChart3, Clock, Download, ExternalLink, CheckCircle2, XCircle, Image, Loader2, Copy } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
 import toast from "react-hot-toast";
-import { exportApi } from "@/services/api";
+import { exportApi, tasksApi } from "@/services/api";
 
 export default function ResultsPage() {
   const [tasks, setTasks] = useState<any[]>([]);
@@ -19,11 +19,7 @@ export default function ResultsPage() {
 
   useEffect(() => {
     setLoading(true);
-    fetch("/api/tasks")
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
+    tasksApi.list()
       .then((data) => {
         const list = data.tasks || [];
         setTasks(list);
@@ -40,11 +36,7 @@ export default function ResultsPage() {
     setSelected(task);
     // Fetch full task details with results and screenshots
     setDetailLoading(true);
-    fetch(`/api/tasks/${task.id}`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
+    tasksApi.get(task.id)
       .then((detail) => {
         setSelected(detail);
         setDetailLoading(false);

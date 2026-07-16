@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { FormInput, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { useState } from "react";
-import { tasksApi } from "@/services/api";
+import { tasksApi, formsApi } from "@/services/api";
 import toast from "react-hot-toast";
 
 export default function FormsPage() {
@@ -45,15 +45,8 @@ export default function FormsPage() {
         description: `Fill form on ${url}`,
       });
 
-      // Execute via the scrape route with form data
-      const response = await fetch("/api/forms/execute", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskId: task.id, url, fields: fieldEntries }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to fill form");
+      // Execute via the forms route with form data
+      const data = await formsApi.execute(task.id, url, fieldEntries);
 
       setResult(data);
       toast.success("Form filled successfully!");

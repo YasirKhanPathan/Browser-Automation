@@ -177,6 +177,7 @@ router.post("/crawl", authMiddleware, async (req: Request, res: Response) => {
 
       res.json({
         taskId: task.id,
+        data: result.aggregated,
         pages: result.pages.length,
         aggregatedCount: result.aggregated.length,
         errors: result.errors,

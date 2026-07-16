@@ -1,5 +1,6 @@
 import { chromium, Browser, BrowserContext, Page } from "playwright";
 import { callLLM, parseJSON } from "./ai";
+import { extractStructuredData } from "./ai-extractor";
 
 let browser: Browser | null = null;
 
@@ -26,7 +27,7 @@ export interface CrawlResult {
   errors: string[];
 }
 
-async function discoverNextPage(page: Page, strategy: string, nextSelector?: string, description?: string): Promise<string | null> {
+async function discoverNextPage(page: Page, strategy: string, nextSelector?: string): Promise<string | null> {
   if (strategy === "selector" && nextSelector) {
     // Manual selector: find the next page link
     const href = await page.evaluate((sel) => {
@@ -136,35 +137,19 @@ export async function crawlPages(
         const data = await page.evaluate(() => {
           const results: Record<string, string>[] = [];
 
+          // Extract ALL text blocks from the page
+          document.querySelectorAll("h1, h2, h3, h4, h5, h6, p, span.text, small.author, blockquote, figcaption, cite, td, th, li, dt, dd").forEach((el) => {
+            const text = el.textContent?.trim();
+            if (text && text.length > 5) {
+              results.push({ type: el.tagName.toLowerCase() + (el.className ? '.' + el.className.split(' ')[0] : ''), text });
+            }
+          });
+
           // Extract links
           document.querySelectorAll("a[href]").forEach((a) => {
             const text = a.textContent?.trim();
             if (text && text.length > 1) {
               results.push({ type: "link", text, href: (a as HTMLAnchorElement).href });
-            }
-          });
-
-          // Extract headings
-          document.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach((h) => {
-            const text = h.textContent?.trim();
-            if (text) {
-              results.push({ type: h.tagName.toLowerCase(), text });
-            }
-          });
-
-          // Extract paragraphs
-          document.querySelectorAll("p").forEach((p) => {
-            const text = p.textContent?.trim();
-            if (text && text.length > 10) {
-              results.push({ type: "paragraph", text });
-            }
-          });
-
-          // Extract list items
-          document.querySelectorAll("li").forEach((li) => {
-            const text = li.textContent?.trim();
-            if (text && text.length > 2) {
-              results.push({ type: "list-item", text });
             }
           });
 
@@ -202,7 +187,7 @@ export async function crawlPages(
 
         // Discover next page
         if (options.strategy !== "sitemap" && pageIndex < options.maxPages - 1) {
-          const nextHref = await discoverNextPage(page, options.strategy, options.nextSelector, options.description);
+          const nextHref = await discoverNextPage(page, options.strategy, options.nextSelector);
           if (nextHref) {
             const nextUrl = resolveUrl(url, nextHref);
             if (nextUrl && !visited.has(nextUrl) && nextUrl.startsWith("http")) {
@@ -220,6 +205,20 @@ export async function crawlPages(
     }
   } finally {
     await context.close();
+  }
+
+  // If a description is provided, use the LLM to extract structured data
+  if (options.description && result.aggregated.length > 0) {
+    try {
+      console.log(`[Crawler] Extracting structured data with LLM (${result.aggregated.length} items)...`);
+      const structured = await extractStructuredData(result.aggregated, options.description);
+      if (Array.isArray(structured) && structured.length > 0) {
+        result.aggregated = structured;
+      }
+    } catch (err: any) {
+      console.error(`[Crawler] LLM extraction failed, keeping raw data: ${err.message}`);
+      result.errors.push(`LLM extraction failed: ${err.message}`);
+    }
   }
 
   return result;

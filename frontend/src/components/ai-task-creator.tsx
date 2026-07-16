@@ -30,9 +30,13 @@ export function AiTaskCreator() {
     setLoading(true);
     setAiError(null);
     try {
+      const token = localStorage.getItem("token");
       const res = await fetch("/api/ai/plan", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ description }),
       });
       const data = await res.json();
@@ -85,6 +89,12 @@ export function AiTaskCreator() {
       // Extract URL from plan steps (find first navigate action)
       const navigateStep = plan.steps.find((s) => s.action === "navigate" && s.target.startsWith("http"));
       const url = navigateStep?.target || "";
+
+      if (!url) {
+        toast.error("Plan has no valid URL to navigate to. Please try a different description.");
+        setExecuting(false);
+        return;
+      }
 
       const task = await tasksApi.create({
         name: plan.name,
