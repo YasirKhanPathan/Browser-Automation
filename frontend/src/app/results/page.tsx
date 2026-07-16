@@ -276,24 +276,43 @@ export default function ResultsPage() {
                           {renderScreenshot(selected)}
                         </TabsContent>
                         <TabsContent value="log" className="mt-4">
-                          <div className="space-y-2">
-                            {(selected.results || []).map((r: any, i: number) => (
-                              <div key={i} className="flex items-center gap-3 rounded-lg border p-3">
-                                {r.status === "SUCCESS" ? (
-                                  <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-                                ) : (
-                                  <XCircle className="h-4 w-4 text-destructive shrink-0" />
-                                )}
-                                <Badge variant={r.status === "SUCCESS" ? "success" : "destructive"}>
-                                  {r.status}
-                                </Badge>
-                                <span className="text-sm">{r.duration ? `${r.duration}ms` : "—"}</span>
-                                {r.errorMsg && (
-                                  <span className="text-xs text-destructive truncate flex-1">{r.errorMsg}</span>
-                                )}
-                              </div>
-                            ))}
-                          </div>
+                          {(selected.results || []).length === 0 ? (
+                            <div className="text-center py-8">
+                              <Clock className="h-8 w-8 mx-auto mb-2 text-muted-foreground/30" />
+                              <p className="text-sm text-muted-foreground">No execution log available</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {(selected.results || []).map((r: any, i: number) => (
+                                <div key={i} className="rounded-lg border p-4 space-y-2">
+                                  <div className="flex items-center gap-3">
+                                    {r.status === "SUCCESS" ? (
+                                      <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                                    ) : (
+                                      <XCircle className="h-4 w-4 text-destructive shrink-0" />
+                                    )}
+                                    <Badge variant={r.status === "SUCCESS" ? "success" : "destructive"}>
+                                      {r.status}
+                                    </Badge>
+                                    <span className="text-sm text-muted-foreground">
+                                      {r.duration ? `${r.duration}ms` : "—"}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground ml-auto">
+                                      {new Date(r.createdAt).toLocaleString()}
+                                    </span>
+                                  </div>
+                                  {r.errorMsg && (
+                                    <p className="text-xs text-destructive bg-destructive/5 rounded p-2">{r.errorMsg}</p>
+                                  )}
+                                  {r.data && (
+                                    <pre className="text-xs text-muted-foreground bg-muted/50 rounded p-2 overflow-auto max-h-32 whitespace-pre-wrap">
+                                      {typeof r.data === "string" ? r.data : JSON.stringify(r.data, null, 2)}
+                                    </pre>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </TabsContent>
                       </Tabs>
                     )}

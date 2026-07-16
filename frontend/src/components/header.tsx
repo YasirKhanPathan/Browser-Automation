@@ -3,17 +3,20 @@
 import { Sun, Moon, Menu, X } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
 
-export function Header() {
+interface HeaderProps {
+  mobileOpen: boolean;
+  onToggle: () => void;
+}
+
+export function Header({ mobileOpen, onToggle }: HeaderProps) {
   const { theme, setTheme } = useTheme();
-  const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background/80 backdrop-blur-xl px-6">
+    <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background/80 backdrop-blur-xl px-4 lg:px-6">
       <button
         className="lg:hidden"
-        onClick={() => setMobileOpen(!mobileOpen)}
+        onClick={onToggle}
       >
         {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </button>

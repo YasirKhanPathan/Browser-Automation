@@ -94,6 +94,7 @@ router.post("/:id/execute", async (req: Request, res: Response) => {
 
       res.json({ status: "COMPLETED", duration, data: result });
     } catch (err: any) {
+      console.error(`[Execute] Task ${task.id} (${task.type}) failed:`, err.message);
       await prisma.taskResult.create({
         data: {
           taskId: task.id,
@@ -109,7 +110,8 @@ router.post("/:id/execute", async (req: Request, res: Response) => {
 
       res.status(500).json({ error: err.message });
     }
-  } catch (error) {
+  } catch (error: any) {
+    console.error("[Execute] Unexpected error:", error.message);
     res.status(500).json({ error: "Failed to execute task" });
   }
 });

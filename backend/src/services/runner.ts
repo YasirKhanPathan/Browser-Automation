@@ -62,6 +62,52 @@ export async function runTask(task: any) {
       return { filename, url: `/uploads/screenshots/${filename}` };
     }
 
+    case "CUSTOM": {
+      const url = extractUrl(config);
+      const plan = config?.plan;
+      if (!url && !(plan && Array.isArray(plan))) {
+        throw new Error("No URL or plan configured for custom task");
+      }
+
+      const steps = plan && Array.isArray(plan) ? plan : [{ action: "navigate", target: url }];
+      const results: any[] = [];
+
+      for (const step of steps) {
+        switch (step.action) {
+          case "navigate":
+            results.push({ action: "navigate", target: step.target, status: "done" });
+            break;
+          case "screenshot": {
+            const targetUrl = extractUrl(config);
+            if (!targetUrl) throw new Error("No URL for screenshot step");
+            const screenshotsDir = path.join(process.cwd(), "uploads", "screenshots");
+            if (!fs.existsSync(screenshotsDir)) {
+              fs.mkdirSync(screenshotsDir, { recursive: true });
+            }
+            const filename = `${task.id}-${Date.now()}.png`;
+            const filepath = path.join(screenshotsDir, filename);
+            await captureScreenshot(targetUrl, filepath, { fullPage: true });
+            await prisma.screenshot.create({
+              data: { taskId: task.id, filename, filepath, pageUrl: targetUrl },
+            });
+            results.push({ action: "screenshot", filename, url: `/uploads/screenshots/${filename}`, status: "done" });
+            break;
+          }
+          case "scrape": {
+            const targetUrl = extractUrl(config);
+            if (!targetUrl) throw new Error("No URL for scrape step");
+            const data = await scrapePageDirect(targetUrl);
+            results.push({ action: "scrape", data, status: "done" });
+            break;
+          }
+          default:
+            results.push({ action: step.action, status: "skipped", reason: "unknown action" });
+        }
+      }
+
+      return results;
+    }
+
     default:
       throw new Error(`Unknown task type: ${task.type}`);
   }

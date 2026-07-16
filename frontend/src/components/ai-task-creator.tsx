@@ -65,6 +65,7 @@ export function AiTaskCreator() {
         name: `Quick Scrape: ${new URL(url).hostname}`,
         type: "SCRAPE",
         description,
+        config: { url },
       });
       toast.success("Task created! Running...");
       const result = await tasksApi.execute(task.id);
