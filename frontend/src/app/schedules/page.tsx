@@ -10,6 +10,7 @@ import { Clock, Loader2, AlertCircle, Plus, Trash2, Mail, Play, Pause } from "lu
 import { useState, useCallback, useMemo } from "react";
 import useSWR from "swr";
 import { schedulesApi, tasksApi, authFetcher } from "@/services/api";
+import { TaskSelector } from "@/components/task-selector";
 import toast from "react-hot-toast";
 
 interface Schedule {
@@ -34,7 +35,7 @@ export default function SchedulesPage() {
   });
 
   const schedules = useMemo(() => (schedData?.schedules || []) as Schedule[], [schedData]);
-  const tasks = useMemo(() => (taskData?.tasks || []).filter((t: any) => t.status === "COMPLETED"), [taskData]);
+  const tasks = useMemo(() => (taskData?.tasks || []) as any[], [taskData]);
   const loading = schedLoading;
 
   const [showCreate, setShowCreate] = useState(false);
@@ -128,19 +129,13 @@ export default function SchedulesPage() {
               <CardTitle>Create Schedule</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Task</Label>
-                <select
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                  value={selectedTask}
-                  onChange={(e) => setSelectedTask(e.target.value)}
-                >
-                  <option value="">Select a completed task...</option>
-                  {tasks.map((t: any) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              </div>
+              <TaskSelector
+                value={selectedTask}
+                onChange={setSelectedTask}
+                tasks={tasks}
+                filterCompleted
+                placeholder="e.g., Scrape product prices from amazon.com every 6 hours"
+              />
 
               <div className="space-y-2">
                 <Label>Schedule (Cron Expression)</Label>
